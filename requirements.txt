@@ -1,0 +1,9 @@
+numpy
+scipy
+pandas
+matplotlib
+nibabel
+nilearn
+librosa
+himalaya
+awscli
