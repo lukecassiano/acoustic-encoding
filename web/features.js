@@ -586,7 +586,9 @@ export function extract(y, { debug = false } = {}) {
 
   const fs = framesToTrs(tempo.map((_, t) => [Math.log2(tempo[t]), pulse[t], onsetTrain[t], rough[t], hcdf[t]]), nTr);
   const structural = fs.map((r, t) => [r[0], r[1], r[2], beatCv, keys[t][0], keys[t][1], Math.log(r[3] + 1e-6), r[4]]);
-  const out = { acoustic: framesToTrs(acousticFrames, nTr).map((r) => Array.from(r)), structural };
+  // rhythm: the frame-rate onset envelope and global tempo, for the page's entrainment spectrum
+  const out = { acoustic: framesToTrs(acousticFrames, nTr).map((r) => Array.from(r)), structural,
+                rhythm: { onsetEnv: env, bpm, frameRate: SR / HOP } };
   if (debug) {
     Object.assign(out, { nFrames: T, nTr, logmel, mfcc, centroid, bandwidth, tuning, chroma, rms,
                          onsetEnv: env, tempo, pulse, onsets, bpm, beats, keys, roughness: rough, tonnetz: ton });

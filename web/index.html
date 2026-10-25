@@ -34,8 +34,8 @@ button, input, select { font: inherit; color: inherit; }
 
 .app {
   display: grid; grid-template-columns: 268px minmax(0, 1fr) 316px;
-  grid-template-areas: "top top top" "listen stage regions" "listen timeline regions" "notes notes notes";
-  grid-template-rows: auto minmax(540px, 1fr) auto auto;
+  grid-template-areas: "top top top" "listen stage regions" "listen timeline regions" "listen metrics regions" "notes notes notes";
+  grid-template-rows: auto minmax(540px, 1fr) auto auto auto;
   column-gap: 32px; row-gap: 16px; min-height: 100%;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 20px 32px; max-width: 1580px; margin: 0 auto; box-sizing: border-box;
@@ -135,6 +135,31 @@ select { background: var(--paper-2); border: 1px solid var(--rule); border-radiu
 #tl { width: 100%; height: 118px; display: block; cursor: pointer; touch-action: none; }
 .track-meta { display: flex; justify-content: space-between; gap: 12px; font: 11.5px var(--font-mono); color: var(--ink-3); flex-wrap: wrap; }
 
+/* ---- metrics */
+.metrics { grid-area: metrics; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px 28px; min-width: 0; padding-top: 14px; border-top: 1px solid var(--rule); }
+.metric { display: grid; gap: 6px; min-width: 0; align-content: start; }
+.mhead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.mhead h2 { margin: 0; }
+.mnum { font: 800 30px/1 var(--font-display); font-variation-settings: "opsz" 144; font-variant-numeric: tabular-nums lining-nums; white-space: nowrap; }
+.mnum small { font: 400 13px var(--font-mono); color: var(--ink-3); }
+.metric canvas { width: 100%; height: 108px; display: block; }
+.mnote { margin: 0; font-size: 12.5px; color: var(--ink-2); max-width: 62ch; }
+.mnote .eq { font-size: 14px; }
+
+/* ---- search */
+.search { display: flex; gap: 6px; margin-top: 10px; }
+.search input { flex: 1; min-width: 0; background: var(--paper-2); border: 1px solid var(--rule); border-radius: 8px; padding: 7px 9px; }
+.search button { background: var(--ink); color: var(--paper); border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
+.results { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 2px; max-height: 260px; overflow-y: auto; }
+.results button { width: 100%; display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; text-align: left; background: none; border: 0; border-radius: 9px; padding: 5px 6px; cursor: pointer; }
+.results button:hover, .results button[aria-pressed="true"] { background: var(--paper-2); }
+.results img { width: 40px; height: 40px; border-radius: 5px; background: var(--rule); object-fit: cover; }
+.results b, .results span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.results b { font: 600 13px var(--font-ui); }
+.results span { font-size: 12px; color: var(--ink-2); }
+.search-note { margin: 6px 0 0; font-size: 12px; color: var(--ink-3); }
+.search-note code { font: 11.5px var(--font-mono); color: var(--ink-2); background: var(--paper-2); padding: 1px 4px; border-radius: 4px; overflow-wrap: anywhere; }
+
 /* ---- regions */
 .rlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
 .rlist li { display: grid; grid-template-columns: minmax(0, 1fr) 92px 30px; gap: 10px; align-items: center; padding: 5px 6px; border-radius: 8px; cursor: pointer; }
@@ -166,11 +191,11 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
 .eq { font: italic 17px var(--font-display); color: var(--ink); white-space: nowrap; }
 
 @media (max-width: 1080px) {
-  .app { grid-template-columns: minmax(0, 1fr) 300px; grid-template-areas: "top top" "stage regions" "timeline regions" "listen listen" "notes notes"; }
+  .app { grid-template-columns: minmax(0, 1fr) 300px; grid-template-areas: "top top" "stage regions" "timeline regions" "metrics regions" "listen listen" "notes notes"; }
   .listen { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px 28px; }
 }
 @media (max-width: 760px) {
-  .app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "stage" "timeline" "listen" "regions" "notes"; grid-template-rows: auto; }
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "stage" "timeline" "metrics" "listen" "regions" "notes"; grid-template-rows: auto; }
   .stage { min-height: 0; }
   .canvas-wrap { aspect-ratio: 4 / 4.2; }
   .stage.sliced .canvas-wrap { aspect-ratio: auto; display: grid; gap: 12px; }
@@ -206,6 +231,12 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
         <input type="file" id="file" accept="audio/*">
       </label>
       <p class="upload-name" id="upload-name" hidden></p>
+      <form class="search" id="search" role="search">
+        <input type="search" id="q" placeholder="Search a song or artist" aria-label="Search songs" autocomplete="off">
+        <button type="submit">Search</button>
+      </form>
+      <p class="search-note" id="search-note">30-second previews from Apple's public iTunes Search API.</p>
+      <ul class="results" id="results" hidden></ul>
     </div>
     <div>
       <h2>Test stimuli</h2>
@@ -298,6 +329,19 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
     <div class="track">
       <canvas id="tl" aria-label="Waveform and predicted response of the selected region; click to seek"></canvas>
       <div class="track-meta"><span id="tl-left">waveform</span><span id="tl-right"></span></div>
+    </div>
+  </section>
+
+  <section class="metrics panel" aria-label="Metrics">
+    <div class="metric">
+      <div class="mhead"><h2>Rhythm on offer</h2><span class="mnum" id="beat-num">–</span></div>
+      <canvas id="spec" aria-label="Spectrum of the sound's onset envelope around the playhead, 0.4 to 5 Hz"></canvas>
+      <p class="mnote"><span id="beat-snr"></span> Spectrum of the sound's onset envelope in an 8 s window around the playhead. Cortex locks to these slow periodicities (frequency tagging, Nozaradan et al. 2011); this measures the sound, not a predicted EEG.</p>
+    </div>
+    <div class="metric">
+      <div class="mhead"><h2>Spread of the predicted response</h2><span class="mnum" id="ent-num">–</span></div>
+      <canvas id="ent" aria-label="Effective number of voxels carrying the predicted response, per scan"></canvas>
+      <p class="mnote">Effective number of voxels carrying the prediction, <span class="eq">2<sup>H</sup></span> with <span class="eq">H = −Σ p<sub>k</sub> log<sub>2</sub> p<sub>k</sub></span> and <span class="eq">p<sub>k</sub> = ŷ<sub>k</sub><sup>2</sup> / Σ ŷ<sup>2</sup></span> over the lit voxels that survive the degeneration dial. Low means one focused hotspot; high means the response is shared out evenly.</p>
     </div>
   </section>
 
@@ -526,24 +570,78 @@ async function loadProbe(id) {
   await setStimulus({ name: p.name, samples, buffer: buf, duration: samples.length / SR });
 }
 
+// Decode any audio the browser understands, resample to 22,050 Hz mono, run the model.
+async function loadAudio(name, bytes, label) {
+  const buf = await audio().decodeAudioData(bytes);
+  const dur = Math.min(buf.duration, MAX_SEC);
+  const off = new OfflineAudioContext(1, Math.ceil(dur * SR), SR);
+  const src = off.createBufferSource();
+  src.buffer = buf; src.connect(off.destination); src.start();
+  const samples = (await off.startRendering()).getChannelData(0).slice();
+  document.querySelectorAll("[data-probe], [data-hit]").forEach((b) => b.setAttribute("aria-pressed", "false"));
+  const note = $("#upload-name");
+  note.hidden = false;
+  note.textContent = label ?? `${name} · ${fmt(buf.duration)}${buf.duration > MAX_SEC ? ", first 4:00 analysed" : ""}`;
+  await setStimulus({ name, samples, buffer: buf, duration: dur });
+}
+
 async function loadFile(file) {
   try {
     status(`Decoding ${file.name}`);
-    const buf = await audio().decodeAudioData(await file.arrayBuffer());
-    const dur = Math.min(buf.duration, MAX_SEC);
-    const off = new OfflineAudioContext(1, Math.ceil(dur * SR), SR);
-    const src = off.createBufferSource();
-    src.buffer = buf; src.connect(off.destination); src.start();
-    const samples = (await off.startRendering()).getChannelData(0).slice();
-    document.querySelectorAll("[data-probe]").forEach((b) => b.setAttribute("aria-pressed", "false"));
-    const note = $("#upload-name");
-    note.hidden = false;
-    note.textContent = `${file.name} · ${fmt(buf.duration)}${buf.duration > MAX_SEC ? ", first 4:00 analysed" : ""}`;
-    await setStimulus({ name: file.name, samples, buffer: buf, duration: dur });
+    await loadAudio(file.name, await file.arrayBuffer());
   } catch (err) {
     status(`This file could not be decoded (${err.message}). Try an MP3, WAV, M4A or OGG file.`, "error");
   }
 }
+
+// ------------------------------------------------------------ song search
+
+const SEARCH_NOTE = "30-second previews from Apple's public iTunes Search API.";
+const LOCAL_NOTE = "Song search has to contact Apple, which pages on claude.ai are not allowed to do. Run the local copy instead: <code>python -m src.serve_web</code> in acoustic-encoding, then open <code>http://localhost:8000</code>.";
+
+$("#search").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const q = $("#q").value.trim(), note = $("#search-note"), list = $("#results");
+  if (!q) return;
+  note.textContent = "Searching";
+  let data;
+  try {
+    const r = await fetch(`https://itunes.apple.com/search?${new URLSearchParams({ term: q, media: "music", entity: "song", limit: "12" })}`);
+    if (!r.ok) throw new Error(`search returned ${r.status}`);
+    data = await r.json();
+  } catch {
+    note.innerHTML = LOCAL_NOTE;
+    list.hidden = true;
+    return;
+  }
+  const hits = (data.results || []).filter((h) => h.previewUrl);
+  if (!hits.length) { note.textContent = `No previews found for "${q}". Try the artist and song title.`; list.hidden = true; return; }
+  note.textContent = SEARCH_NOTE;
+  list.replaceChildren(...hits.map((h, i) => {
+    const li = document.createElement("li"), b = document.createElement("button"), img = document.createElement("img");
+    const text = document.createElement("span"), title = document.createElement("b"), sub = document.createElement("span");
+    b.type = "button"; b.dataset.hit = String(i); b.setAttribute("aria-pressed", "false");
+    img.alt = ""; img.loading = "lazy"; if (h.artworkUrl60) img.src = h.artworkUrl60;
+    title.textContent = h.trackName; sub.textContent = `${h.artistName} · ${h.collectionName ?? ""}`;
+    text.append(title, sub); b.append(img, text); li.append(b);
+    return li;
+  }));
+  list.hidden = false;
+  list.onclick = async (ev) => {
+    const b = ev.target.closest("[data-hit]");
+    if (!b) return;
+    const h = hits[Number(b.dataset.hit)];
+    try {
+      status(`Fetching the preview of ${h.trackName}`);
+      const r = await fetch(h.previewUrl);
+      if (!r.ok) throw new Error(`preview returned ${r.status}`);
+      await loadAudio(h.trackName, await r.arrayBuffer(), `${h.trackName} · ${h.artistName} · 30 s Apple preview`);
+      b.setAttribute("aria-pressed", "true");
+    } catch (err) {
+      status(`The preview could not be loaded (${err.message}). Try another result.`, "error");
+    }
+  };
+});
 
 // --------------------------------------------------------- feature worker
 
@@ -614,6 +712,8 @@ function usePrediction(pred) {
     for (let v = 0; v < V; v++) state.voxEnergy[v] += pred.voxel[t * V + v] ** 2;
   }
   if (!state.cursor) placeCursorAtPeak(null);
+  computeEntropy();
+  specCache.t = -1;
   updateTicks();
   drawTimelineBase();
   updateKept();
@@ -1234,6 +1334,140 @@ function seekFromEvent(e) {
 tl.addEventListener("pointerdown", (e) => { tl.setPointerCapture(e.pointerId); seekFromEvent(e); });
 tl.addEventListener("pointermove", (e) => { if (e.buttons) seekFromEvent(e); });
 
+// ----------------------------------------------------------------- metrics
+
+const FR = SR / 512; // onset-envelope frame rate
+const F_LO = 0.4, F_HI = 5.0, SPEC_F = Array.from({ length: 231 }, (_, i) => F_LO + i * 0.02);
+const specCache = { t: -1, stim: null, w: 0 };
+
+function fitCanvas(cv) {
+  const r = cv.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio, 2);
+  const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  return r.width ? dpr : 0;
+}
+
+// amplitude spectrum of the onset envelope in an 8 s Hann window centred on time tc
+function envelopeSpectrum(env, tc) {
+  const n = Math.round(8 * FR), a = Math.round(tc * FR) - (n >> 1), x = new Float64Array(n);
+  let m = 0, c = 0;
+  for (let i = 0; i < n; i++) { const j = a + i; if (j >= 0 && j < env.length) { m += env[j]; c++; } }
+  m = c ? m / c : 0;
+  for (let i = 0; i < n; i++) {
+    const j = a + i;
+    x[i] = j >= 0 && j < env.length ? (env[j] - m) * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1))) : 0;
+  }
+  const amp = (f) => {
+    const w = (2 * Math.PI * f) / FR;
+    let re = 0, im = 0;
+    for (let i = 0; i < n; i++) { re += x[i] * Math.cos(w * i); im -= x[i] * Math.sin(w * i); }
+    return Math.hypot(re, im);
+  };
+  return { amp, curve: SPEC_F.map(amp) };
+}
+
+function drawSpectrum(t) {
+  const R = state.stim?.features?.rhythm, cv = $("#spec");
+  if (!R || !colors.css) return;
+  const dpr = fitCanvas(cv);
+  if (!dpr || (Math.abs(t - specCache.t) < 0.1 && specCache.stim === state.stim && specCache.w === cv.width)) return;
+  Object.assign(specCache, { t, stim: state.stim, w: cv.width });
+  const { amp, curve } = envelopeSpectrum(R.onsetEnv, t), css = colors.css, g = cv.getContext("2d");
+  const W = cv.width, H = cv.height, top = 14 * dpr, bot = H - 16 * dpr;
+  const x = (f) => ((f - F_LO) / (F_HI - F_LO)) * W, mx = Math.max(...curve) || 1, y = (v) => bot - (v / mx) * (bot - top);
+  g.clearRect(0, 0, W, H);
+  g.font = `${10 * dpr}px "JetBrains Mono", monospace`; g.textBaseline = "bottom";
+  g.fillStyle = css["--rule"];
+  g.fillRect(0, bot, W, Math.max(1, dpr * 0.75));
+  for (const f of [1, 2, 3, 4]) {
+    g.fillStyle = css["--rule"]; g.fillRect(x(f), top, Math.max(1, dpr * 0.5), bot - top);
+    g.fillStyle = css["--ink-3"]; g.fillText(`${f * 60} BPM`, x(f) + 3 * dpr, H - 2 * dpr);
+  }
+  // the beat and its metrical relatives
+  const fb = R.bpm / 60;
+  g.setLineDash([3 * dpr, 3 * dpr]);
+  for (const [k, lab] of [[0.5, "½"], [1, "beat"], [2, "2×"], [3, "3×"]]) {
+    const f = fb * k;
+    if (f < F_LO || f > F_HI) continue;
+    g.strokeStyle = k === 1 ? css["--ink-2"] : css["--ink-3"]; g.lineWidth = Math.max(1, dpr * (k === 1 ? 1.2 : 0.8));
+    g.beginPath(); g.moveTo(x(f), top); g.lineTo(x(f), bot); g.stroke();
+    g.fillStyle = k === 1 ? css["--ink"] : css["--ink-3"]; g.fillText(lab, x(f) + 3 * dpr, top + 1 * dpr);
+  }
+  g.setLineDash([]);
+  g.beginPath(); g.moveTo(x(SPEC_F[0]), bot);
+  SPEC_F.forEach((f, i) => g.lineTo(x(f), y(curve[i])));
+  g.lineTo(x(SPEC_F[SPEC_F.length - 1]), bot); g.closePath();
+  g.fillStyle = css["--pos"]; g.globalAlpha = 0.2; g.fill(); g.globalAlpha = 1;
+  g.beginPath(); SPEC_F.forEach((f, i) => (i ? g.lineTo(x(f), y(curve[i])) : g.moveTo(x(f), y(curve[i]))));
+  g.strokeStyle = css["--pos"]; g.lineWidth = 1.5 * dpr; g.stroke();
+  // window peak (0.5-4 Hz) and frequency-tagging SNR at the beat: amplitude over the mean of bins 2-5 away
+  let pk = SPEC_F.findIndex((f) => f >= 0.5);
+  SPEC_F.forEach((f, i) => { if (f >= 0.5 && f <= 4 && curve[i] > curve[pk]) pk = i; });
+  const step = 1 / 8, nb = [2, 3, 4, 5].flatMap((k) => [amp(fb - k * step), amp(fb + k * step)]);
+  const noise = nb.reduce((s, v) => s + v, 0) / nb.length, snr = noise > 0 ? amp(fb) / noise : 0;
+  $("#beat-num").innerHTML = `${Math.round(SPEC_F[pk] * 60)}<small> BPM peak here</small>`;
+  $("#beat-snr").textContent = R.bpm > 0
+    ? `The beat (${fb.toFixed(2)} Hz, ${Math.round(R.bpm)} BPM) stands ×${snr.toFixed(1)} above neighbouring frequencies.`
+    : "No steady beat was found in this audio.";
+}
+
+function computeEntropy() {
+  const P = state.pred, B = state.bundle;
+  if (!P || !B) return;
+  const V = B.voxelIndex.length, labB = B.meta.label_braak, Bs = state.braak, keep = new Uint8Array(V);
+  let nk = 0;
+  for (let v = 0; v < V; v++) {
+    const st = labB[B.labelVol[B.voxelIndex[v]]];
+    keep[v] = Bs > 0 && st >= 1 && st <= Bs ? 0 : 1;
+    nk += keep[v];
+  }
+  const neff = new Float32Array(P.nTr);
+  for (let t = 0; t < P.nTr; t++) {
+    let s = 0, h = 0;
+    for (let v = 0; v < V; v++) if (keep[v]) s += P.voxel[t * V + v] ** 2;
+    if (s > 0) for (let v = 0; v < V; v++) {
+      if (!keep[v]) continue;
+      const p = P.voxel[t * V + v] ** 2 / s;
+      if (p > 0) h -= p * Math.log2(p);
+    }
+    neff[t] = s > 0 ? 2 ** h : 0;
+  }
+  state.ent = { neff, nk };
+}
+
+function drawEntropy(t) {
+  const E = state.ent, cv = $("#ent");
+  if (!E || !state.stim || !colors.css) return;
+  const dpr = fitCanvas(cv);
+  if (!dpr) return;
+  const g = cv.getContext("2d"), css = colors.css, W = cv.width, H = cv.height, dur = state.stim.duration;
+  const top = 14 * dpr, bot = H - 16 * dpr, n = E.neff.length;
+  let lo = Infinity, hi = -Infinity;
+  for (const v of E.neff) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  const pad = (hi - lo) * 0.15 || 1; lo = Math.max(0, lo - pad); hi += pad;
+  const xs = (k) => (((k + 0.5) * TR) / dur) * W, y = (v) => bot - ((v - lo) / (hi - lo)) * (bot - top);
+  g.clearRect(0, 0, W, H);
+  g.font = `${10 * dpr}px "JetBrains Mono", monospace`; g.textBaseline = "bottom";
+  g.fillStyle = css["--rule"]; g.fillRect(0, bot, W, Math.max(1, dpr * 0.75));
+  g.fillStyle = css["--ink-3"];
+  g.fillText(`${Math.round(hi)}`, 2 * dpr, top); g.fillText(`${Math.round(lo)}`, 2 * dpr, bot - 2 * dpr);
+  g.beginPath(); g.moveTo(xs(0), bot);
+  for (let k = 0; k < n; k++) g.lineTo(xs(k), y(E.neff[k]));
+  g.lineTo(xs(n - 1), bot); g.closePath();
+  g.fillStyle = css["--neg"]; g.globalAlpha = 0.18; g.fill(); g.globalAlpha = 1;
+  g.beginPath();
+  for (let k = 0; k < n; k++) (k ? g.lineTo(xs(k), y(E.neff[k])) : g.moveTo(xs(k), y(E.neff[k])));
+  g.strokeStyle = css["--neg"]; g.lineWidth = 1.5 * dpr; g.stroke();
+  // the scan the brain is showing now
+  const tt = state.timing === "aligned" ? t + state.bundle.meta.peak_delay_s : t;
+  const u = Math.min(n - 1, Math.max(0, tt / TR - 0.5)), k0 = Math.floor(u), k1 = Math.min(n - 1, k0 + 1);
+  const val = E.neff[k0] + (E.neff[k1] - E.neff[k0]) * (u - k0), px = Math.min(W - 1, Math.max(0, (tt / dur) * W));
+  g.fillStyle = css["--ink"]; g.fillRect(Math.round(px), top, Math.max(1, Math.round(1.5 * dpr)), bot - top);
+  g.beginPath(); g.arc(px, y(val), 3.2 * dpr, 0, 2 * Math.PI); g.fill();
+  g.fillStyle = css["--ink-3"]; g.fillText("scan time", W - 62 * dpr, H - 2 * dpr);
+  $("#ent-num").innerHTML = `${Math.round(val)}<small> of ${E.nk.toLocaleString()} voxels</small>`;
+}
+
 // ---------------------------------------------------------------- playback
 
 const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
@@ -1300,7 +1534,7 @@ function timingNote() {
     ? `Shows the response a scanner would record now, about ${d} s after the sound that drives it.`
     : `Shifted back by this listener's peak delay (${d} s) so colour lines up with the sound. An approximation.`;
 }
-$("#braak").addEventListener("input", (e) => { state.braak = Number(e.target.value); updateKept(); state.dirty = true; });
+$("#braak").addEventListener("input", (e) => { state.braak = Number(e.target.value); updateKept(); computeEntropy(); state.dirty = true; });
 $("#reset").addEventListener("click", () => fitCamera(true));
 $("#sub").addEventListener("change", (e) => loadSubject(e.target.value).catch((err) => status(err.message, "error")));
 $("#file").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ""; });
@@ -1321,6 +1555,7 @@ new ResizeObserver(() => {
 }).observe($("#wrap"));
 new ResizeObserver(sizeTimeline).observe(tl);
 new ResizeObserver(() => { state.dirty = true; }).observe($("#slices"));
+new ResizeObserver(() => { specCache.t = -1; state.dirty = true; }).observe($(".metrics"));
 const themeChanged = () => { if (mesh) readColors(); renderCmapPicker(); };
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", themeChanged);
 new MutationObserver(themeChanged).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
@@ -1341,6 +1576,8 @@ function tick() {
     if (sliced) drawSlices(frame); else paint(frame);
     updateRegions(frame);
     drawTimeline(t);
+    drawSpectrum(t);
+    drawEntropy(t);
     if (state.stim) {
       const shown = Math.floor(t * 10);
       if (shown !== lastShown || state.dirty) {
