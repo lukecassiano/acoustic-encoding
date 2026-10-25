@@ -1405,7 +1405,7 @@ function drawSpectrum(t) {
   SPEC_F.forEach((f, i) => { if (f >= 0.5 && f <= 4 && curve[i] > curve[pk]) pk = i; });
   const step = 1 / 8, nb = [2, 3, 4, 5].flatMap((k) => [amp(fb - k * step), amp(fb + k * step)]);
   const noise = nb.reduce((s, v) => s + v, 0) / nb.length, snr = noise > 0 ? amp(fb) / noise : 0;
-  $("#beat-num").innerHTML = `${Math.round(SPEC_F[pk] * 60)}<small> BPM peak here</small>`;
+  $("#beat-num").innerHTML = `${Math.round(SPEC_F[pk] * 60)}<small> BPM, strongest periodicity</small>`;
   $("#beat-snr").textContent = R.bpm > 0
     ? `The beat (${fb.toFixed(2)} Hz, ${Math.round(R.bpm)} BPM) stands ×${snr.toFixed(1)} above neighbouring frequencies.`
     : "No steady beat was found in this audio.";
