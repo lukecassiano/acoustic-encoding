@@ -1,0 +1,1382 @@
+<title>CAMP</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,400..700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: an instrument panel on paper. Stimuli and display settings left, the
+   brain centre stage over its timeline, regions and the degeneration dial right. */
+:root {
+  --paper: #F2ECE1; --paper-2: #F8F4EC; --ink: #221D18; --ink-2: #5F574D; --ink-3: #8C8376; --rule: #DDD3C3;
+  --pos: #D2466A; --neg: #4C61B5; --lit: #E7C1C0; --hl: #8E7BD8; --ablated: #6D645B;
+  --gyrus: #DED5C7; --sulcus: #A69B8B; --blob-a: #F1B9C7; --blob-b: #CBC2EF; --scan-bg: #0B0A09;
+  --font-display: "Fraunces", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-ui: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #17140F; --paper-2: #211D17; --ink: #F1EBDF; --ink-2: #B9AFA0; --ink-3: #847A6C; --rule: #352F27;
+    --pos: #F06C8C; --neg: #8597F2; --lit: #5C3F46; --hl: #A897F2; --ablated: #0D0B08;
+    --gyrus: #77705F; --sulcus: #474137; --blob-a: #4F2433; --blob-b: #2C2853; --scan-bg: #000000; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #17140F; --paper-2: #211D17; --ink: #F1EBDF; --ink-2: #B9AFA0; --ink-3: #847A6C; --rule: #352F27;
+  --pos: #F06C8C; --neg: #8597F2; --lit: #5C3F46; --hl: #A897F2; --ablated: #0D0B08;
+  --gyrus: #77705F; --sulcus: #474137; --blob-a: #4F2433; --blob-b: #2C2853; --scan-bg: #000000; color-scheme: dark;
+}
+
+html, body { height: 100%; }
+body { background: var(--paper); color: var(--ink); font: 15px/1.5 var(--font-ui); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--hl); outline-offset: 2px; }
+
+.app {
+  display: grid; grid-template-columns: 268px minmax(0, 1fr) 316px;
+  grid-template-areas: "top top top" "listen stage regions" "listen timeline regions" "notes notes notes";
+  grid-template-rows: auto minmax(540px, 1fr) auto auto;
+  column-gap: 32px; row-gap: 16px; min-height: 100%;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 32px; max-width: 1580px; margin: 0 auto; box-sizing: border-box;
+}
+
+/* ---- header */
+.top { grid-area: top; display: flex; align-items: flex-end; gap: 28px; flex-wrap: wrap; border-bottom: 1px solid var(--rule); padding-bottom: 14px; }
+.brand { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.wordmark { margin: 0; font: 900 clamp(46px, 5.4vw, 70px)/0.86 var(--font-display); font-variation-settings: "opsz" 144; letter-spacing: -0.035em; }
+.expansion { margin: 0; font: italic 400 17px/1.2 var(--font-display); color: var(--ink-2); }
+.crumb { margin: 0 0 4px; font: 12px var(--font-mono); color: var(--ink-3); }
+.models { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+.models button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 10px 7px; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; }
+.models button b { font: 600 14px var(--font-ui); }
+.models button span { font: 11px var(--font-mono); color: var(--ink-3); }
+.models button[aria-selected="true"] { border-bottom-color: var(--ink); }
+.models button:disabled { cursor: not-allowed; opacity: 0.55; }
+
+/* ---- panels */
+.panel h2 { margin: 0 0 10px; font: 500 11px/1 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
+.listen { grid-area: listen; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.regions { grid-area: regions; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+
+.drop { position: relative; display: grid; gap: 4px; padding: 16px; border: 1.5px dashed var(--rule); border-radius: 14px; cursor: pointer; background: var(--paper-2); transition: border-color .15s; }
+.drop:hover, .drop.over { border-color: var(--ink-2); }
+.drop b { font: 600 14px var(--font-ui); }
+.drop span { font-size: 12.5px; color: var(--ink-2); }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+
+.probes { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.probes button { width: 100%; text-align: left; background: none; border: 0; border-radius: 10px; padding: 8px 10px; cursor: pointer; display: grid; gap: 1px; }
+.probes button:hover { background: var(--paper-2); }
+.probes button[aria-pressed="true"] { background: var(--paper-2); box-shadow: inset 2px 0 0 var(--ink); }
+.probes b { font: 600 13.5px var(--font-ui); }
+.probes span { font-size: 12.5px; color: var(--ink-2); }
+.probes code { font: 11px var(--font-mono); color: var(--ink-3); }
+.upload-name { margin: 8px 0 0; font: 12px var(--font-mono); color: var(--ink-2); overflow-wrap: anywhere; }
+
+.field { display: grid; gap: 7px; }
+.field > span, .hint { font-size: 12.5px; color: var(--ink-2); }
+.sublabel { font: 11px var(--font-mono); color: var(--ink-3); margin-top: 4px; }
+select { background: var(--paper-2); border: 1px solid var(--rule); border-radius: 8px; padding: 7px 9px; }
+.seg { display: flex; border: 1px solid var(--rule); border-radius: 9px; padding: 2px; background: var(--paper-2); }
+.seg label { flex: 1; text-align: center; font-size: 12.5px; padding: 5px 4px; border-radius: 7px; cursor: pointer; color: var(--ink-2); white-space: nowrap; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg input:checked + label { background: var(--ink); color: var(--paper); }
+.seg input:focus-visible + label { outline: 2px solid var(--hl); outline-offset: 1px; }
+.swatches { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.swatches label { display: grid; gap: 4px; padding: 6px 8px; border: 1px solid var(--rule); border-radius: 9px; cursor: pointer; font-size: 12px; color: var(--ink-2); background: var(--paper-2); }
+.swatches i { display: block; height: 6px; border-radius: 3px; }
+.swatches input { position: absolute; opacity: 0; pointer-events: none; }
+.swatches input:checked + label { border-color: var(--ink); color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.swatches input:focus-visible + label { outline: 2px solid var(--hl); outline-offset: 1px; }
+
+/* ---- stage */
+.stage { grid-area: stage; position: relative; min-width: 0; min-height: 540px; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.viewbar { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; z-index: 2; }
+.viewbar button { background: none; border: 1px solid transparent; border-radius: 999px; padding: 4px 11px; font: 12.5px var(--font-ui); color: var(--ink-2); cursor: pointer; }
+.viewbar button:hover { border-color: var(--rule); }
+.viewbar button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.viewbar .sep { width: 1px; height: 18px; background: var(--rule); margin: 0 6px; }
+.viewbar .reset { margin-left: auto; font: 11.5px var(--font-mono); border-color: var(--rule); background: var(--paper-2); }
+.canvas-wrap { position: relative; min-height: 0; }
+.blob { position: absolute; inset: 6% 12% 10%; border-radius: 50%; background: radial-gradient(closest-side at 38% 46%, var(--blob-a), transparent 72%), radial-gradient(closest-side at 64% 56%, var(--blob-b), transparent 70%); filter: blur(30px); opacity: .7; pointer-events: none; }
+#brain { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+#brain:active { cursor: grabbing; }
+.orient { position: absolute; top: 8px; left: 4px; font: 11.5px var(--font-mono); color: var(--ink-3); pointer-events: none; }
+.readout { position: absolute; left: 4px; bottom: 6px; display: grid; gap: 4px; pointer-events: none; }
+.clock { font: 800 64px/0.9 var(--font-display); font-variation-settings: "opsz" 144; letter-spacing: -0.02em; font-variant-numeric: tabular-nums lining-nums; }
+.clock small { font: 400 20px var(--font-display); color: var(--ink-3); letter-spacing: 0; }
+.frame { font: 12px var(--font-mono); color: var(--ink-2); }
+.legend { position: absolute; right: 4px; bottom: 10px; display: grid; gap: 6px; justify-items: end; pointer-events: none; }
+.bar { width: 190px; height: 8px; border-radius: 4px; }
+.ticks { width: 190px; display: flex; justify-content: space-between; font: 11px var(--font-mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.comment { font: 11.5px var(--font-mono); color: var(--ink-3); text-align: right; }
+.status { position: absolute; top: 12px; left: 50%; translate: -50% 0; background: var(--paper-2); border: 1px solid var(--rule); border-radius: 999px; padding: 7px 14px; font: 12.5px var(--font-mono); display: flex; gap: 8px; align-items: center; white-space: nowrap; z-index: 3; max-width: 92%; overflow: hidden; text-overflow: ellipsis; }
+.status i { width: 7px; height: 7px; border-radius: 50%; background: var(--pos); animation: pulse 1s ease-in-out infinite; flex: none; }
+.status.error { white-space: normal; border-radius: 14px; }
+.status.error i { animation: none; background: var(--neg); }
+@keyframes pulse { 50% { opacity: .25; } }
+
+/* slices */
+.slices { position: absolute; inset: 8px 0 96px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-content: center; }
+.pane { position: relative; background: var(--scan-bg); border-radius: 10px; overflow: hidden; aspect-ratio: 1; }
+.pane canvas { width: 100%; height: 100%; display: block; cursor: crosshair; image-rendering: pixelated; touch-action: none; }
+.pane b { position: absolute; top: 8px; left: 10px; font: 500 11px var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: #d8d2c8; pointer-events: none; }
+.pane .o { position: absolute; font: 10.5px var(--font-mono); color: #8f887d; pointer-events: none; }
+.slice-info { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font: 12px var(--font-mono); color: var(--ink-2); }
+.underlay { display: flex; gap: 6px; align-items: center; }
+.underlay .seg { min-width: 220px; }
+
+/* ---- timeline */
+.timeline { grid-area: timeline; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; min-width: 0; }
+.play { width: 46px; height: 46px; border-radius: 50%; border: 0; background: var(--ink); color: var(--paper); cursor: pointer; display: grid; place-items: center; }
+.play svg { width: 18px; height: 18px; fill: currentColor; }
+.track { display: grid; gap: 4px; min-width: 0; }
+#tl { width: 100%; height: 118px; display: block; cursor: pointer; touch-action: none; }
+.track-meta { display: flex; justify-content: space-between; gap: 12px; font: 11.5px var(--font-mono); color: var(--ink-3); flex-wrap: wrap; }
+
+/* ---- regions */
+.rlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+.rlist li { display: grid; grid-template-columns: minmax(0, 1fr) 92px 30px; gap: 10px; align-items: center; padding: 5px 6px; border-radius: 8px; cursor: pointer; }
+.rlist li:hover, .rlist li.sel { background: var(--paper-2); }
+.rlist li.sel .rname { font-weight: 600; }
+.rname { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rbar { position: relative; height: 6px; border-radius: 3px; background: var(--rule); }
+.rbar::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--ink-3); }
+.rbar i { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+.rnone { font: 10.5px var(--font-mono); color: var(--ink-3); }
+.braak { font: 500 10px/1 var(--font-mono); text-align: center; padding: 3px 0; border: 1px solid var(--rule); border-radius: 5px; color: var(--ink-2); }
+.rlist li.gone .rname { text-decoration: line-through; color: var(--ink-3); }
+.rlist li.gone .braak { background: var(--ablated); border-color: var(--ablated); color: var(--paper); }
+.rhead { display: grid; grid-template-columns: minmax(0, 1fr) 92px 30px; gap: 10px; padding: 0 6px 6px; font: 10.5px var(--font-mono); color: var(--ink-3); }
+.rhead span:nth-child(2) { display: flex; justify-content: space-between; }
+
+.degen { display: grid; gap: 10px; padding-top: 18px; border-top: 1px solid var(--rule); }
+.degen p { margin: 0; font-size: 12.5px; color: var(--ink-2); max-width: 36ch; }
+input[type="range"] { width: 100%; accent-color: var(--ink); }
+.stages { display: flex; justify-content: space-between; font: 10.5px var(--font-mono); color: var(--ink-3); }
+.kept { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.kept b { font: 800 48px/0.9 var(--font-display); font-variation-settings: "opsz" 144; font-variant-numeric: tabular-nums lining-nums; }
+.kept span { font: 11.5px/1.4 var(--font-mono); color: var(--ink-2); }
+
+/* ---- notes */
+.notes { grid-area: notes; border-top: 1px solid var(--rule); padding-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px 36px; }
+.notes h3 { margin: 0 0 6px; font: italic 600 17px/1.3 var(--font-display); }
+.notes p { margin: 0; font-size: 13.5px; color: var(--ink-2); max-width: 62ch; }
+.eq { font: italic 17px var(--font-display); color: var(--ink); white-space: nowrap; }
+
+@media (max-width: 1080px) {
+  .app { grid-template-columns: minmax(0, 1fr) 300px; grid-template-areas: "top top" "stage regions" "timeline regions" "listen listen" "notes notes"; }
+  .listen { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px 28px; }
+}
+@media (max-width: 760px) {
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "stage" "timeline" "listen" "regions" "notes"; grid-template-rows: auto; }
+  .stage { min-height: 0; }
+  .canvas-wrap { aspect-ratio: 4 / 4.2; }
+  .stage.sliced .canvas-wrap { aspect-ratio: auto; display: grid; gap: 12px; }
+  .slices { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); padding-block: 8px; }
+  .stage.sliced .readout, .stage.sliced .legend { position: static; justify-items: start; }
+  .clock { font-size: 40px; }
+  .models { margin-left: 0; }
+  .bar, .ticks { width: 130px; }
+}
+@media (prefers-reduced-motion: reduce) { .status i { animation: none; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1 class="wordmark">CAMP</h1>
+      <p class="expansion">Cortical Acoustic–Musical Predictor</p>
+    </div>
+    <p class="crumb">~/acoustic-encoding/web</p>
+    <nav class="models" role="tablist" aria-label="Model">
+      <button role="tab" aria-selected="true" id="m-camp"><b>CAMP</b><span>68 hand-built features</span></button>
+      <button role="tab" aria-selected="false" disabled title="Ridge model on MERT embeddings, fitted to the same listeners. Not fitted yet."><b>MERT</b><span>not fitted yet</span></button>
+      <button role="tab" aria-selected="false" disabled title="Meta's TRIBE v2 brain-response model. Licence and output space still to check."><b>TRIBE v2</b><span>not connected yet</span></button>
+    </nav>
+  </header>
+
+  <aside class="listen panel" aria-label="Stimulus and display">
+    <div>
+      <h2>Your audio</h2>
+      <label class="drop" id="drop" for="file">
+        <b>Drop a song, or choose a file</b>
+        <span>Any length; the first 4 minutes are analysed. Processing happens in this browser and nothing is uploaded.</span>
+        <input type="file" id="file" accept="audio/*">
+      </label>
+      <p class="upload-name" id="upload-name" hidden></p>
+    </div>
+    <div>
+      <h2>Test stimuli</h2>
+      <ul class="probes" id="probes"></ul>
+    </div>
+    <div class="field">
+      <h2>Listener</h2>
+      <select id="sub" aria-label="Listener whose model predicts"></select>
+      <span id="sub-meta"></span>
+    </div>
+    <div class="field">
+      <h2>Colour</h2>
+      <div class="swatches" id="cmaps" role="radiogroup" aria-label="Colour map"></div>
+      <div class="sublabel">Glow</div>
+      <div class="seg" role="radiogroup" aria-label="Glow">
+        <input type="radio" name="glow" id="g-0" value="0"><label for="g-0">Off</label>
+        <input type="radio" name="glow" id="g-1" value="1" checked><label for="g-1">Soft</label>
+        <input type="radio" name="glow" id="g-2" value="2"><label for="g-2">Strong</label>
+      </div>
+      <div class="sublabel">Spot size</div>
+      <div class="seg" role="radiogroup" aria-label="Spot size">
+        <input type="radio" name="spread" id="p-0" value="0"><label for="p-0">Exact</label>
+        <input type="radio" name="spread" id="p-1" value="1" checked><label for="p-1">Larger</label>
+        <input type="radio" name="spread" id="p-2" value="2"><label for="p-2">Largest</label>
+      </div>
+      <span class="hint" id="spread-note"></span>
+    </div>
+    <div class="field">
+      <h2>Surface and timing</h2>
+      <div class="seg" role="radiogroup" aria-label="Surface">
+        <input type="radio" name="surf" id="s-infl" value="infl" checked><label for="s-infl">Inflated</label>
+        <input type="radio" name="surf" id="s-pial" value="pial"><label for="s-pial">Folded</label>
+      </div>
+      <div class="seg" role="radiogroup" aria-label="Timing">
+        <input type="radio" name="timing" id="t-scan" value="scan" checked><label for="t-scan">As scanned</label>
+        <input type="radio" name="timing" id="t-align" value="aligned"><label for="t-align">Aligned to sound</label>
+      </div>
+      <span class="hint" id="timing-note"></span>
+    </div>
+  </aside>
+
+  <main class="stage" id="stage" aria-label="Predicted brain response">
+    <div class="viewbar" role="toolbar" aria-label="View">
+      <button type="button" data-view="lateral" aria-pressed="true">Lateral</button>
+      <button type="button" data-view="medial" aria-pressed="false">Medial</button>
+      <button type="button" data-view="superior" aria-pressed="false">Superior</button>
+      <button type="button" data-view="inferior" aria-pressed="false">Inferior</button>
+      <button type="button" data-view="anterior" aria-pressed="false">Anterior</button>
+      <button type="button" data-view="posterior" aria-pressed="false">Posterior</button>
+      <span class="sep"></span>
+      <button type="button" data-view="slices" aria-pressed="false">fMRI slices</button>
+      <button type="button" class="reset" id="reset">reset view</button>
+    </div>
+    <div class="canvas-wrap" id="wrap">
+      <div class="blob" id="blob"></div>
+      <canvas id="brain" aria-label="Cortical surface coloured by predicted response; drag to rotate"></canvas>
+      <div class="orient" id="orient"></div>
+      <div class="slices" id="slices" hidden>
+        <div class="pane"><canvas data-plane="axial" aria-label="Axial slice"></canvas><b>Axial</b><span class="o" style="left:8px;top:50%">L</span><span class="o" style="right:8px;top:50%">R</span><span class="o" style="left:50%;top:8px">A</span></div>
+        <div class="pane"><canvas data-plane="coronal" aria-label="Coronal slice"></canvas><b>Coronal</b><span class="o" style="left:8px;top:50%">L</span><span class="o" style="right:8px;top:50%">R</span><span class="o" style="left:50%;top:8px">S</span></div>
+        <div class="pane"><canvas data-plane="sagittal" aria-label="Sagittal slice"></canvas><b>Sagittal</b><span class="o" style="left:8px;top:50%">P</span><span class="o" style="right:8px;top:50%">A</span><span class="o" style="left:50%;top:8px">S</span></div>
+        <div class="slice-info">
+          <div class="underlay"><span>Underlay</span>
+            <div class="seg" role="radiogroup" aria-label="Underlay">
+              <input type="radio" name="under" id="u-epi" value="epi" checked><label for="u-epi">Mean fMRI (EPI)</label>
+              <input type="radio" name="under" id="u-t1" value="t1"><label for="u-t1">Anatomy (T1)</label>
+            </div>
+          </div>
+          <span id="voxel-info"></span>
+        </div>
+      </div>
+      <div class="status" id="status" role="status"><i></i><span id="status-text">Loading the model</span></div>
+      <div class="readout">
+        <div class="clock" id="clock">0:00<small> / 0:00</small></div>
+        <div class="frame" id="frame">scan 0 of 0</div>
+      </div>
+      <div class="legend">
+        <div class="bar" id="cbar"></div>
+        <div class="ticks"><span id="vmin">−</span><span id="vmid">0</span><span id="vmax">+</span></div>
+        <div class="comment">/* predicted BOLD, z · prediction, not measurement */</div>
+        <div class="comment" id="lit-note">tinted cortex: where the model beats chance</div>
+      </div>
+    </div>
+  </main>
+
+  <section class="timeline" aria-label="Timeline">
+    <button class="play" id="play" type="button" aria-label="Play">
+      <svg viewBox="0 0 24 24" id="play-icon"><path d="M7 4.5v15l13-7.5z"/></svg>
+    </button>
+    <div class="track">
+      <canvas id="tl" aria-label="Waveform and predicted response of the selected region; click to seek"></canvas>
+      <div class="track-meta"><span id="tl-left">waveform</span><span id="tl-right"></span></div>
+    </div>
+  </section>
+
+  <aside class="regions panel" aria-label="Regions">
+    <div>
+      <h2>Regions</h2>
+      <div class="rhead"><span>predicted now</span><span><span>−</span><span>+</span></span><span>Braak</span></div>
+      <ul class="rlist" id="rlist"></ul>
+    </div>
+    <div class="degen">
+      <h2>Simulate degeneration</h2>
+      <p>Remove cortex in the order Alzheimer's tau spreads (Braak stages I–VI) and see how much of this music's predicted response is left.</p>
+      <input type="range" id="braak" min="0" max="6" step="1" value="0" aria-label="Braak stage removed">
+      <div class="stages"><span>none</span><span>I</span><span>II</span><span>III</span><span>IV</span><span>V</span><span>VI</span></div>
+      <div class="kept"><b id="kept">100%</b><span id="kept-note">of the predicted response kept<br>no cortex removed</span></div>
+    </div>
+  </aside>
+
+  <footer class="notes">
+    <div>
+      <h3>What you are seeing</h3>
+      <p>The audio is cut into 1.5 s scans and described by 68 features: 60 acoustic (spectrum, timbre, brightness, pitch class, loudness) and 8 musical (tempo, pulse clarity, onset rate, beat regularity, key clarity, mode, roughness, harmonic change). A linear model fitted to one listener's fMRI turns them into a response in every voxel: <span class="eq">ŷ(t) = Σ<sub>d</sub> z(x(t − d)) W<sub>d</sub></span>, summed over delays d of 1.5 to 7.5 s, because blood flow trails neural activity by seconds.</p>
+    </div>
+    <div>
+      <h3>Where it can and cannot see</h3>
+      <p>Colour appears only where this model predicted held-out music better than chance (clip-permutation test, FDR q &lt; 0.05). That is mostly superior temporal cortex. Hippocampus, cingulate and precuneus carry no measurable music signal in this dataset, which is passive listening to unfamiliar clips, so they stay uncoloured. That gap is a finding, not a rendering fault.</p>
+    </div>
+    <div>
+      <h3>Surface and slices</h3>
+      <p>The 3D views place each listener's voxels on a standard surface (fsaverage6), which blurs individual anatomy; glow and spot size are display aids only. The slice view is closer to the data: the listener's own mean functional image from the scan, in native 2 mm voxels, with each voxel's own prediction painted on it.</p>
+    </div>
+    <div>
+      <h3>How far to trust it, and the dial</h3>
+      <p>The model learned from 480 fifteen-second GTZAN excerpts (OpenNeuro ds003720); long songs, speech or unusual sounds are out of distribution. Braak stages are tau-PET regions from Pascoal et al. (2020, <i>Brain</i> 143:2818) mapped onto Harvard-Oxford labels; removing them simulates spatial vulnerability only, with no compensation, and is not a model of a patient.</p>
+    </div>
+  </footer>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { SR, TR, prepare, extract } from "./features.js";
+import { loadBundle, predict } from "./model.js";
+
+const $ = (s) => document.querySelector(s);
+const MAX_SEC = 240;
+const ROMAN = ["–", "I", "II", "III", "IV", "V", "VI", "–"];
+
+// Arrays are published gzip + base64 (.gz.b64.txt); JSON as itself.
+const get = async (p) => {
+  const binary = /\.(f16|f32|u32|u8)$/.test(p), r = await fetch(`data/${p}${binary ? ".gz.b64.txt" : ""}`);
+  if (!r.ok) throw new Error(`${p} returned ${r.status}`);
+  if (!binary) return r.arrayBuffer();
+  const s = atob((await r.text()).trim()), z = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) z[i] = s.charCodeAt(i);
+  return new Response(new Blob([z]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+};
+const getJSON = async (p) => JSON.parse(new TextDecoder().decode(await get(p)));
+
+const state = {
+  sub: null, bundle: null, stim: null, pred: null, vmax: 1, rmax: 1, voxmax: 1, energy: null, voxEnergy: null,
+  playing: false, offset: 0, startedAt: 0, source: null,
+  view: "lateral", surface: "infl", timing: "scan", braak: 0, hover: null, selected: 0,
+  cmap: "camp", glow: 1, spread: 1, under: "epi", cursor: null,
+  dirty: true, userMoved: false,
+};
+
+function status(text, kind = "busy") {
+  const el = $("#status");
+  el.hidden = !text;
+  el.classList.toggle("error", kind === "error");
+  if (text) $("#status-text").textContent = text;
+}
+
+// ---------------------------------------------------------------- colour maps
+
+const srgbToLin = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+const hexRGB = (h) => { h = h.replace("#", ""); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255); };
+const lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const ramp = (stops, t) => {
+  const n = stops.length - 1, x = Math.min(n, Math.max(0, t * n)), i = Math.min(n - 1, Math.floor(x));
+  return lerp3(stops[i], stops[i + 1], x - i);
+};
+const turbo = (t) => [
+  0.13572138 + t * (4.6153926 + t * (-42.66032258 + t * (132.13108234 + t * (-152.94239396 + t * 59.28637943)))),
+  0.09140261 + t * (2.19418839 + t * (4.84296658 + t * (-14.18503333 + t * (4.27729857 + t * 2.82956604)))),
+  0.1066733 + t * (12.64194608 + t * (-60.58204836 + t * (110.36276771 + t * (-89.90310912 + t * 27.34824973)))),
+].map((v) => Math.min(1, Math.max(0, v)));
+const VIRIDIS = ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"].map(hexRGB);
+const HOT = ["#b4161b", "#e8451e", "#f79a2a", "#ffe066", "#fff6c4"].map(hexRGB);
+const COLD = ["#1c3fb0", "#2f7ae0", "#45b8f0", "#9fe8ff"].map(hexRGB);
+
+// Each map: x in [-1, 1] (signed, scaled by vmax) -> sRGB [0..1]. `signed` maps show
+// both directions; magnitude maps colour |x| only.
+const CMAPS = {
+  camp: { name: "CAMP", signed: true, f: (x) => (x >= 0 ? cssRGB("--pos") : cssRGB("--neg")) },
+  heat: { name: "Heat", signed: true, f: (x) => (x >= 0 ? ramp(HOT, Math.abs(x)) : ramp(COLD, Math.abs(x))) },
+  rainbow: { name: "Rainbow", signed: true, f: (x) => turbo(0.5 + 0.5 * x) },
+  viridis: { name: "Viridis", signed: false, f: (x) => ramp(VIRIDIS, Math.abs(x)) },
+};
+let cssCache = {};
+function cssRGB(name) { return cssCache[name] ??= hexRGB(getComputedStyle(document.documentElement).getPropertyValue(name).trim()); }
+
+const LUT_N = 512;
+let lut = null; // Float32Array(LUT_N * 3), linear RGB over x in [-1, 1]
+function buildLut() {
+  const m = CMAPS[state.cmap];
+  lut = new Float32Array(LUT_N * 3);
+  for (let i = 0; i < LUT_N; i++) {
+    const x = (i / (LUT_N - 1)) * 2 - 1, c = m.f(x);
+    for (let a = 0; a < 3; a++) lut[i * 3 + a] = srgbToLin(c[a]);
+  }
+  const css = (x) => `rgb(${m.f(x).map((v) => Math.round(v * 255)).join(",")})`;
+  const lit = getComputedStyle(document.documentElement).getPropertyValue("--lit").trim();
+  const xs = m.signed ? [-1, -0.6, -0.25, 0, 0.25, 0.6, 1] : [0, 0.25, 0.5, 0.75, 1];
+  $("#cbar").style.background = `linear-gradient(90deg, ${xs.map((x) => (state.cmap === "camp" && x === 0 ? lit : css(x === 0 ? 1e-3 : x))).join(", ")})`;
+  updateTicks();
+}
+const lutAt = (x) => Math.round(((Math.max(-1, Math.min(1, x)) + 1) / 2) * (LUT_N - 1)) * 3;
+const alphaOf = (a) => (a > 0.04 ? 0.22 + 0.78 * ((a - 0.04) / 0.96) ** 0.75 : 0);
+
+function renderCmapPicker() {
+  $("#cmaps").innerHTML = Object.entries(CMAPS).map(([id, m]) => {
+    const xs = m.signed ? [-1, -0.5, 0.001, 0.5, 1] : [0.001, 0.25, 0.5, 0.75, 1];
+    const grad = xs.map((x) => `rgb(${m.f(x).map((v) => Math.round(v * 255)).join(",")})`).join(", ");
+    return `<input type="radio" name="cmap" id="c-${id}" value="${id}" ${id === state.cmap ? "checked" : ""}>
+      <label for="c-${id}">${m.name}<i style="background: linear-gradient(90deg, ${grad})"></i></label>`;
+  }).join("");
+  document.querySelectorAll('input[name="cmap"]').forEach((el) => el.addEventListener("change", () => { state.cmap = el.value; buildLut(); state.dirty = true; }));
+}
+
+function updateTicks() {
+  const signed = CMAPS[state.cmap].signed, v = state.view === "slices" ? state.voxmax : state.vmax;
+  $("#vmin").textContent = signed ? `−${v.toFixed(2)}` : "0";
+  $("#vmid").textContent = signed ? "0" : (v / 2).toFixed(2);
+  $("#vmax").textContent = `+${v.toFixed(2)}`;
+}
+
+// --------------------------------------------------------------- stimuli
+
+function synth(kind) {
+  const dur = 18, n = dur * SR, y = new Float32Array(n);
+  let seed = 7;
+  const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const tone = (midi, t0, len, amp) => {
+    const f0 = 440 * 2 ** ((midi - 69) / 12), i0 = Math.round(t0 * SR), i1 = Math.min(n, Math.round((t0 + len) * SR));
+    for (let i = i0; i < i1; i++) {
+      const t = (i - i0) / SR, env = Math.min(1, t / 0.012) * Math.exp(-2.4 * t) * Math.min(1, (i1 - i) / (0.06 * SR));
+      let s = 0;
+      for (let h = 1; h <= 6 && f0 * h < 9000; h++) s += Math.sin(2 * Math.PI * f0 * h * t) / h;
+      y[i] += amp * env * s;
+    }
+  };
+  const kick = (t0) => {
+    let ph = 0;
+    for (let i = Math.round(t0 * SR), j = 0; j < 0.32 * SR && i < n; i++, j++) {
+      const t = j / SR; ph += (2 * Math.PI * (45 + 80 * Math.exp(-t * 28))) / SR;
+      y[i] += 0.9 * Math.exp(-t * 10) * Math.sin(ph);
+    }
+  };
+  const noiseHit = (t0, len, decay, amp, tonal = 0) => {
+    let prev = 0;
+    for (let i = Math.round(t0 * SR), j = 0; j < len * SR && i < n; i++, j++) {
+      const t = j / SR, w = rand() * 2 - 1, hp = w - prev; prev = w;
+      y[i] += amp * Math.exp(-t * decay) * (hp + tonal * Math.sin(2 * Math.PI * 190 * t));
+    }
+  };
+  const groove = (bpm) => {
+    const beat = 60 / bpm;
+    for (let b = 0; b * beat < dur - 0.4; b++) {
+      const t = b * beat;
+      if (b % 4 === 0 || b % 4 === 2) kick(t);
+      if (b % 2 === 1) noiseHit(t, 0.2, 24, 0.3, 0.8);
+      noiseHit(t, 0.05, 95, 0.12); noiseHit(t + beat / 2, 0.05, 95, 0.09);
+    }
+  };
+  const progression = (chords, bpm) => {
+    const len = (2 * 60) / bpm;
+    for (let k = 0, t = 0; t < dur - 0.2; k++, t += len) {
+      const ch = chords[k % chords.length];
+      for (const m of ch) tone(m, t, len, 0.16);
+      tone(ch[0] - 12, t, len, 0.22);
+    }
+  };
+  if (kind === "major") { progression([[60, 64, 67], [65, 69, 72], [67, 71, 74], [60, 64, 67]], 100); groove(100); }
+  if (kind === "minor") { progression([[60, 63, 67], [65, 68, 72], [67, 70, 74], [60, 63, 67]], 100); groove(100); }
+  if (kind === "drums") groove(100);
+  if (kind === "clusters") {
+    const cl = [[60, 61, 62], [61, 62, 63], [59, 60, 61], [62, 63, 64]];
+    for (let k = 0, t = 0; t < dur - 0.5; k++) { const len = 0.5 + rand() * 1.5; for (const m of cl[k % 4]) tone(m, t, len + 0.3, 0.2); t += len; }
+  }
+  let peak = 0;
+  for (const v of y) peak = Math.max(peak, Math.abs(v));
+  for (let i = 0; i < n; i++) y[i] *= 0.8 / peak;
+  return y;
+}
+
+const PROBES = [
+  { id: "major", name: "Major progression", text: "I–IV–V–I in C over a drum groove, 100 BPM", feat: "mode · key clarity · pulse" },
+  { id: "minor", name: "The same, in minor", text: "Identical rhythm and timbre; only the mode changes", feat: "mode" },
+  { id: "drums", name: "Drum groove alone", text: "A steady pulse with no pitch content", feat: "pulse clarity · onset rate" },
+  { id: "clusters", name: "Semitone clusters", text: "Rough, irregularly timed chords", feat: "roughness · beat irregularity" },
+];
+
+function renderProbes() {
+  $("#probes").innerHTML = PROBES.map((p) => `<li><button type="button" data-probe="${p.id}" aria-pressed="false">
+    <b>${p.name}</b><span>${p.text}</span><code>${p.feat}</code></button></li>`).join("");
+  $("#probes").addEventListener("click", (e) => { const b = e.target.closest("[data-probe]"); if (b) loadProbe(b.dataset.probe); });
+}
+
+let ac = null;
+const audio = () => (ac ??= new (window.AudioContext || window.webkitAudioContext)());
+
+async function loadProbe(id) {
+  const p = PROBES.find((q) => q.id === id), samples = synth(id);
+  const buf = audio().createBuffer(1, samples.length, SR);
+  buf.copyToChannel(samples, 0);
+  document.querySelectorAll("[data-probe]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.probe === id)));
+  $("#upload-name").hidden = true;
+  await setStimulus({ name: p.name, samples, buffer: buf, duration: samples.length / SR });
+}
+
+async function loadFile(file) {
+  try {
+    status(`Decoding ${file.name}`);
+    const buf = await audio().decodeAudioData(await file.arrayBuffer());
+    const dur = Math.min(buf.duration, MAX_SEC);
+    const off = new OfflineAudioContext(1, Math.ceil(dur * SR), SR);
+    const src = off.createBufferSource();
+    src.buffer = buf; src.connect(off.destination); src.start();
+    const samples = (await off.startRendering()).getChannelData(0).slice();
+    document.querySelectorAll("[data-probe]").forEach((b) => b.setAttribute("aria-pressed", "false"));
+    const note = $("#upload-name");
+    note.hidden = false;
+    note.textContent = `${file.name} · ${fmt(buf.duration)}${buf.duration > MAX_SEC ? ", first 4:00 analysed" : ""}`;
+    await setStimulus({ name: file.name, samples, buffer: buf, duration: dur });
+  } catch (err) {
+    status(`This file could not be decoded (${err.message}). Try an MP3, WAV, M4A or OGG file.`, "error");
+  }
+}
+
+// --------------------------------------------------------- feature worker
+
+let worker = null, jobId = 0;
+const pending = new Map();
+try {
+  worker = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
+  worker.onmessage = (e) => {
+    const m = e.data, job = pending.get(m.id);
+    if (!job) return;
+    if (m.type === "stage") status(m.stage === "features" ? "Extracting 68 features" : "Predicting every lit voxel and surface point");
+    if (m.type === "done") { pending.delete(m.id); job.resolve(m); }
+    if (m.type === "error") { pending.delete(m.id); job.reject(new Error(m.message)); }
+  };
+  worker.onerror = (e) => { // module workers unsupported: finish queued jobs here instead
+    e.preventDefault();
+    worker = null;
+    for (const [id, job] of pending) { pending.delete(id); analyseHere(job.samples).then(job.resolve, job.reject); }
+  };
+} catch { worker = null; }
+
+function analyse(samples) {
+  if (!worker) return analyseHere(samples);
+  return new Promise((resolve, reject) => {
+    const id = ++jobId;
+    pending.set(id, { resolve, reject, samples });
+    worker.postMessage({ type: "run", id, samples });
+  });
+}
+
+function analyseHere(samples) {
+  return new Promise((resolve, reject) => setTimeout(() => {
+    try {
+      const t0 = performance.now();
+      if (samples.length < 3 * SR) throw new Error("The audio is shorter than 3 seconds. Use a longer clip.");
+      const features = extract(prepare(samples));
+      resolve({ features, prediction: predict(features, state.bundle), ms: performance.now() - t0 });
+    } catch (err) { reject(err); }
+  }, 30));
+}
+
+async function setStimulus(stim) {
+  stop(true);
+  state.stim = stim;
+  state.offset = Math.min(7.5, stim.duration / 2);
+  status("Extracting 68 features");
+  try {
+    const out = await analyse(stim.samples);
+    if (state.stim !== stim) return;
+    stim.features = out.features;
+    usePrediction(out.prediction);
+    status(null);
+    $("#tl-right").textContent = `features + prediction in ${(out.ms / 1000).toFixed(1)} s`;
+  } catch (err) {
+    status(err.message, "error");
+  }
+}
+
+const p99 = (arr) => { const a = Float32Array.from(arr, Math.abs).sort(); return Math.max(a[Math.floor(a.length * 0.99)] || 0, 1e-6); };
+
+function usePrediction(pred) {
+  state.pred = pred;
+  const B = state.bundle, K = B.vertexIndex.length, V = B.voxelIndex.length;
+  state.vmax = p99(pred.vertex); state.rmax = p99(pred.region); state.voxmax = p99(pred.voxel);
+  state.energy = new Float64Array(K); state.voxEnergy = new Float64Array(V);
+  for (let t = 0; t < pred.nTr; t++) {
+    for (let k = 0; k < K; k++) state.energy[k] += pred.vertex[t * K + k] ** 2;
+    for (let v = 0; v < V; v++) state.voxEnergy[v] += pred.voxel[t * V + v] ** 2;
+  }
+  if (!state.cursor) placeCursorAtPeak(null);
+  updateTicks();
+  drawTimelineBase();
+  updateKept();
+  state.dirty = true;
+}
+
+// ----------------------------------------------------------------- bundle
+
+let vol = null; // slice-viewer lookups for the current listener
+
+async function loadSubject(sub) {
+  status(`Loading listener ${sub}`);
+  const bundle = await loadBundle(get, sub);
+  const m = bundle.meta, [ni, nj, nk] = m.volume.shape;
+  const [epi, t1] = await Promise.all([get(`sub-${sub}/epi_mean.u8`), get(`sub-${sub}/epi_t1.u8`)]);
+  const litOf = new Int32Array(ni * nj * nk).fill(-1);
+  bundle.voxelIndex.forEach((f, i) => { litOf[f] = i; });
+  const regionLabel = m.regions.map((r) => m.labels.indexOf(r.label));
+  vol = { shape: [ni, nj, nk], epi: new Uint8Array(epi), t1: new Uint8Array(t1), litOf, regionLabel };
+  state.litIdx = new Int32Array(mesh.meta.n_vertices).fill(-1);
+  bundle.vertexIndex.forEach((v, i) => { state.litIdx[v] = i; });
+  state.bundle = bundle; state.sub = sub; state.cursor = null;
+  worker?.postMessage({ type: "bundle", bundle });
+  $("#sub-meta").textContent = `${m.n_lit_voxels.toLocaleString()} voxels beat chance · median r ${m.median_lit_r.toFixed(2)}, best ${m.max_lit_r.toFixed(2)}`;
+  timingNote();
+  buildSpread();
+  const firstLit = m.regions.findIndex((r) => r.column !== null);
+  if (m.regions[state.selected]?.column == null) state.selected = Math.max(firstLit, 0);
+  renderRegions();
+  if (state.stim?.features) { usePrediction(predict(state.stim.features, bundle)); status(null); }
+}
+
+// ------------------------------------------------------------------- scene
+
+const canvas = $("#brain");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true, premultipliedAlpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x000000, 0);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(24, 1, 1, 6000);
+scene.add(camera);
+scene.add(new THREE.HemisphereLight(0xfffaf2, 0x6f665c, 0.95));
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.55); keyLight.position.set(0.45, 0.65, 1); camera.add(keyLight);
+const fill = new THREE.DirectionalLight(0xf3ecff, 0.45); fill.position.set(-0.8, -0.2, 0.6); camera.add(fill);
+const rim = new THREE.DirectionalLight(0xffffff, 0.7); rim.position.set(0, 0.4, -1); camera.add(rim);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.enablePan = false; controls.rotateSpeed = 0.7;
+controls.addEventListener("start", () => { state.userMoved = true; });
+
+const brain = new THREE.Group();
+scene.add(brain);
+
+// cortex: soft tissue sheen; activation also feeds an emissive term so it reads as lit from within
+const emissiveUniform = { value: 0.55 };
+const material = new THREE.MeshPhysicalMaterial({
+  vertexColors: true, roughness: 0.58, metalness: 0, clearcoat: 0.12, clearcoatRoughness: 0.55,
+  sheen: 0.35, sheenRoughness: 0.8, sheenColor: new THREE.Color(0xfff1ea),
+});
+material.onBeforeCompile = (shader) => {
+  shader.uniforms.uEmissive = emissiveUniform;
+  shader.vertexShader = shader.vertexShader
+    .replace("#include <common>", "#include <common>\nattribute vec3 glow;\nvarying vec3 vGlow;")
+    .replace("#include <begin_vertex>", "#include <begin_vertex>\nvGlow = glow;");
+  shader.fragmentShader = shader.fragmentShader
+    .replace("#include <common>", "#include <common>\nvarying vec3 vGlow;\nuniform float uEmissive;")
+    .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += vGlow * uEmissive;");
+};
+const glowMaterial = new THREE.ShaderMaterial({
+  vertexShader: "attribute vec3 glow; varying vec3 vGlow; void main() { vGlow = glow; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: "varying vec3 vGlow; void main() { gl_FragColor = vec4(vGlow, 1.0); }",
+});
+
+// post: base (MSAA) + glow source -> separable blur at half resolution -> composite
+const rtOpts = { type: THREE.HalfFloatType, depthBuffer: true };
+const baseRT = new THREE.WebGLRenderTarget(1, 1, { ...rtOpts, samples: 4 });
+const glowRT = new THREE.WebGLRenderTarget(1, 1, rtOpts);
+const blurRT = [new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false }),
+                new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false })];
+const quadScene = new THREE.Scene(), quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+quadScene.add(quad);
+const blurMat = new THREE.ShaderMaterial({
+  uniforms: { tSrc: { value: null }, dir: { value: new THREE.Vector2() } },
+  vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+  fragmentShader: `uniform sampler2D tSrc; uniform vec2 dir; varying vec2 vUv;
+    void main() {
+      float w[5] = float[](0.2270270270, 0.1945945946, 0.1216216216, 0.0540540541, 0.0162162162);
+      vec3 c = texture2D(tSrc, vUv).rgb * w[0];
+      for (int i = 1; i < 5; i++) { c += texture2D(tSrc, vUv + dir * float(i)).rgb * w[i]; c += texture2D(tSrc, vUv - dir * float(i)).rgb * w[i]; }
+      gl_FragColor = vec4(c, 1.0);
+    }`,
+  depthTest: false, depthWrite: false,
+});
+const compMat = new THREE.ShaderMaterial({
+  uniforms: { tBase: { value: baseRT.texture }, tGlow: { value: blurRT[0].texture }, gain: { value: 1 }, dark: { value: 0 } },
+  vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+  fragmentShader: `uniform sampler2D tBase, tGlow; uniform float gain, dark; varying vec2 vUv;
+    vec3 toSRGB(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+    void main() {
+      vec4 b = texture2D(tBase, vUv);                  // premultiplied, linear
+      vec3 g = texture2D(tGlow, vUv).rgb * gain;
+      float gm = max(g.r, max(g.g, g.b)), ga = clamp(gm * 0.65, 0.0, 0.7);
+      vec3 hue = gm > 1e-4 ? g / gm : vec3(0.0);
+      vec3 rgb; float a;
+      if (dark > 0.5) { rgb = b.rgb + g; a = clamp(b.a + gm, 0.0, 1.0); }      // light added to a dark page
+      else { rgb = b.rgb * (1.0 - ga) + hue * ga; a = b.a + (1.0 - b.a) * ga; } // tinted haze over paper
+      vec3 straight = a > 1e-4 ? clamp(rgb / a, 0.0, 1.0) : vec3(0.0);
+      gl_FragColor = vec4(toSRGB(straight) * a, a);
+    }`,
+  depthTest: false, depthWrite: false, transparent: true, blending: THREE.NoBlending,
+});
+
+function sizeTargets(w, h) {
+  const dpr = renderer.getPixelRatio(), W = Math.max(1, Math.round(w * dpr)), H = Math.max(1, Math.round(h * dpr));
+  baseRT.setSize(W, H);
+  const hw = Math.max(1, W >> 1), hh = Math.max(1, H >> 1);
+  glowRT.setSize(hw, hh); blurRT[0].setSize(hw, hh); blurRT[1].setSize(hw, hh);
+  state.texel = [1 / hw, 1 / hh];
+}
+
+function renderFrame() {
+  renderer.setRenderTarget(baseRT);
+  renderer.setClearColor(0x000000, 0); renderer.clear();
+  renderer.render(scene, camera);
+  const gain = [0, 1.1, 2.2][state.glow];
+  if (gain > 0) {
+    scene.overrideMaterial = glowMaterial;
+    renderer.setRenderTarget(glowRT); renderer.setClearColor(0x000000, 1); renderer.clear();
+    renderer.render(scene, camera);
+    scene.overrideMaterial = null;
+    quad.material = blurMat;
+    // horizontal then vertical, twice, the second pair wider: a soft, broad halo
+    let src = glowRT;
+    [[1.6, 0], [0, 1.6], [3.2, 0], [0, 3.2]].forEach(([rx, ry], pass) => {
+      const dst = blurRT[pass % 2];
+      blurMat.uniforms.tSrc.value = src.texture;
+      blurMat.uniforms.dir.value.set(state.texel[0] * rx, state.texel[1] * ry);
+      renderer.setRenderTarget(dst); renderer.render(quadScene, quadCam);
+      src = dst;
+    });
+    compMat.uniforms.tGlow.value = src.texture;
+  }
+  compMat.uniforms.gain.value = gain;
+  quad.material = compMat;
+  renderer.setRenderTarget(null); renderer.setClearColor(0x000000, 0); renderer.clear();
+  renderer.render(quadScene, quadCam);
+}
+
+let mesh = null, hemis = [], base = null, colors = {}, adjacency = null, spread = null;
+
+function hemiData(h) {
+  const nL = mesh.meta.n_left, n = h ? mesh.meta.n_vertices - nL : nL, off = h ? nL : 0;
+  const half = mesh.faces.length / 2, f = mesh.faces.subarray(h ? half : 0, h ? 2 * half : half);
+  const index = Uint32Array.from(f, (v) => v - off);
+  const conv = (src) => {
+    const out = new Float32Array(n * 3), lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (let v = 0; v < n; v++) {
+      const s = (off + v) * 3, p = [src[s], src[s + 2], -src[s + 1]]; // RAS -> x right, y up, z posterior
+      for (let a = 0; a < 3; a++) { out[v * 3 + a] = p[a]; lo[a] = Math.min(lo[a], p[a]); hi[a] = Math.max(hi[a], p[a]); }
+    }
+    for (let v = 0; v < n; v++) for (let a = 0; a < 3; a++) out[v * 3 + a] -= (lo[a] + hi[a]) / 2;
+    return { pos: out, width: hi[0] - lo[0], depth: hi[2] - lo[2], height: hi[1] - lo[1] };
+  };
+  return { n, off, index, surf: { pial: conv(mesh.pial), infl: conv(mesh.infl) } };
+}
+
+function buildScene() {
+  hemis = [0, 1].map((h) => {
+    const d = hemiData(h), g = new THREE.BufferGeometry();
+    g.setIndex(new THREE.BufferAttribute(d.index, 1));
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(d.surf.infl.pos), 3));
+    const col = new THREE.BufferAttribute(new Float32Array(d.n * 3), 3), glow = new THREE.BufferAttribute(new Float32Array(d.n * 3), 3);
+    g.setAttribute("color", col); g.setAttribute("glow", glow);
+    const m = new THREE.Mesh(g, material);
+    brain.add(m);
+    return { ...d, geom: g, mesh: m, col, glow };
+  });
+  applySurface();
+}
+
+function applySurface() {
+  for (const H of hemis) {
+    const pos = H.geom.getAttribute("position");
+    pos.array.set(H.surf[state.surface].pos);
+    pos.needsUpdate = true;
+    H.geom.computeVertexNormals();
+    H.geom.computeBoundingSphere();
+  }
+  layout();
+}
+
+const VIEWS = {
+  lateral: { caption: "lateral · left hemisphere on the left, front of the brain outward" },
+  medial: { caption: "medial · inner faces, front of the brain toward the middle" },
+  superior: { caption: "superior · seen from above, front at the top, left on the left" },
+  inferior: { caption: "inferior · seen from below, front at the top, left on the right" },
+  anterior: { caption: "anterior · seen from the front, left on the right" },
+  posterior: { caption: "posterior · seen from behind, left on the left" },
+};
+
+function layout() {
+  const split = state.view === "lateral" || state.view === "medial";
+  const q = new THREE.Quaternion(), ax = (x, y, z, a) => new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(x, y, z), a);
+  if (state.view === "superior") q.copy(ax(1, 0, 0, Math.PI / 2));
+  if (state.view === "inferior") q.copy(ax(0, 0, 1, Math.PI)).multiply(ax(1, 0, 0, -Math.PI / 2));
+  if (state.view === "anterior") q.copy(ax(0, 1, 0, Math.PI));
+  brain.quaternion.copy(q);
+  const gap = state.surface === "infl" ? 7 : 2;
+  hemis.forEach((H, h) => {
+    const s = H.surf[state.surface], sign = h === 0 ? -1 : 1;
+    if (split) {
+      H.mesh.rotation.set(0, (state.view === "lateral" ? -sign : sign) * Math.PI / 2, 0);
+      H.mesh.position.set(sign * (s.depth / 2 + 8), 0, 0);
+    } else {
+      H.mesh.rotation.set(0, 0, 0);
+      H.mesh.position.set(sign * (s.width / 2 + gap / 2), 0, 0);
+    }
+  });
+  $("#orient").textContent = VIEWS[state.view]?.caption ?? "";
+  fitCamera(true);
+  state.dirty = true;
+}
+
+function fitCamera(force) {
+  if (!hemis.length || (state.userMoved && !force)) return;
+  brain.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(brain), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+  const t = Math.tan((camera.fov * Math.PI) / 360);
+  const dist = Math.max(size.y / (2 * t), size.x / (2 * t * camera.aspect)) * 1.18 + size.z / 2;
+  camera.position.set(c.x, c.y + size.y * 0.02, c.z + dist);
+  controls.target.set(c.x, c.y - size.y * 0.05, c.z);
+  camera.up.set(0, 1, 0);
+  controls.update();
+  state.userMoved = false;
+}
+
+function readColors() {
+  cssCache = {};
+  const cs = getComputedStyle(document.documentElement);
+  const c = (n) => new THREE.Color(cs.getPropertyValue(n).trim());
+  colors = { gyrus: c("--gyrus"), sulcus: c("--sulcus"), lit: c("--lit"), hl: c("--hl"), ablated: c("--ablated") };
+  colors.css = Object.fromEntries(["--ink", "--ink-2", "--ink-3", "--rule", "--pos", "--neg", "--paper"].map((n) => [n, cs.getPropertyValue(n).trim()]));
+  const paper = hexRGB(colors.css["--paper"]);
+  compMat.uniforms.dark.value = 0.2126 * paper[0] + 0.7152 * paper[1] + 0.0722 * paper[2] < 0.5 ? 1 : 0;
+  base = new Float32Array(mesh.meta.n_vertices * 3);
+  const sm = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
+  for (let v = 0; v < mesh.meta.n_vertices; v++) {
+    const s = 0.72 * sm((mesh.sulc[v] + 0.6) / 1.6) + 0.28 * sm((mesh.curv[v] + 0.25) / 0.5); // broad depth + fine folds
+    base[v * 3] = colors.gyrus.r + (colors.sulcus.r - colors.gyrus.r) * s;
+    base[v * 3 + 1] = colors.gyrus.g + (colors.sulcus.g - colors.gyrus.g) * s;
+    base[v * 3 + 2] = colors.gyrus.b + (colors.sulcus.b - colors.gyrus.b) * s;
+  }
+  buildLut();
+  state.dirty = true;
+  drawTimelineBase();
+}
+
+// display-only spread: each lit vertex lends its value to neighbours within `rings` mesh steps
+function buildAdjacency() {
+  const n = mesh.meta.n_vertices, f = mesh.faces, deg = new Uint32Array(n + 1);
+  for (let i = 0; i < f.length; i++) deg[f[i] + 1] += 2;
+  for (let v = 0; v < n; v++) deg[v + 1] += deg[v];
+  const nbr = new Uint32Array(deg[n]), fillAt = deg.slice(0, n);
+  for (let i = 0; i < f.length; i += 3) {
+    const a = f[i], b = f[i + 1], c = f[i + 2];
+    nbr[fillAt[a]++] = b; nbr[fillAt[a]++] = c; nbr[fillAt[b]++] = a; nbr[fillAt[b]++] = c; nbr[fillAt[c]++] = a; nbr[fillAt[c]++] = b;
+  }
+  adjacency = { ptr: deg, nbr };
+}
+
+function buildSpread() {
+  if (!state.bundle || !adjacency) return;
+  const rings = [0, 2, 4][state.spread], FALL = [1, 0.8, 0.62, 0.45, 0.3];
+  const n = mesh.meta.n_vertices, seen = new Int32Array(n).fill(-1), depth = new Uint8Array(n);
+  const vs = [], ls = [], ws = [];
+  state.bundle.vertexIndex.forEach((v0, li) => {
+    let frontier = [v0];
+    seen[v0] = li; depth[v0] = 0;
+    for (let d = 0; d <= rings; d++) {
+      const next = [];
+      for (const v of frontier) {
+        vs.push(v); ls.push(li); ws.push(FALL[d]);
+        if (d === rings) continue;
+        for (let p = adjacency.ptr[v]; p < adjacency.ptr[v + 1]; p++) { const u = adjacency.nbr[p]; if (seen[u] !== li) { seen[u] = li; next.push(u); } }
+      }
+      frontier = next;
+    }
+  });
+  const order = Uint32Array.from(vs.keys()).sort((a, b) => vs[a] - vs[b]);
+  const dispV = [], ptr = [0], lit = new Int32Array(order.length), w = new Float32Array(order.length), cov = [];
+  let last = -1, mx = 0;
+  order.forEach((o, k) => {
+    if (vs[o] !== last) { if (last >= 0) { ptr.push(k); cov.push(mx); } dispV.push(vs[o]); last = vs[o]; mx = 0; }
+    lit[k] = ls[o]; w[k] = ws[o]; mx = Math.max(mx, ws[o]);
+  });
+  ptr.push(order.length); cov.push(mx);
+  const dispOf = new Int32Array(n).fill(-1);
+  dispV.forEach((v, i) => { dispOf[v] = i; });
+  spread = { dispV, ptr, lit, w, cov: Float32Array.from(cov), dispOf, value: new Float32Array(dispV.length) };
+  const mm = state.bundle.meta.mesh === "fsaverage6" ? 2.4 : 4.9;
+  $("#spread-note").textContent = rings ? `Display aid: each lit point also tints cortex within about ${Math.round(rings * mm)} mm.` : "Each lit surface point drawn at its own position.";
+  state.dirty = true;
+}
+
+const frameBuf = {};
+function frameAt(t) {
+  const P = state.pred;
+  if (!P) return null;
+  const B = state.bundle, K = B.vertexIndex.length, R = B.nRegionCols, V = B.voxelIndex.length;
+  const tt = state.timing === "aligned" ? t + B.meta.peak_delay_s : t;
+  const u = tt / TR - 0.5, k0 = Math.min(P.nTr - 1, Math.max(0, Math.floor(u))), k1 = Math.min(P.nTr - 1, k0 + 1);
+  const w = u < 0 ? 0 : Math.min(1, Math.max(0, u - k0));
+  const mix = (src, n, key) => {
+    if (!frameBuf[key] || frameBuf[key].length !== n) frameBuf[key] = new Float32Array(n);
+    const out = frameBuf[key];
+    for (let k = 0; k < n; k++) out[k] = (1 - w) * src[k0 * n + k] + w * src[k1 * n + k];
+    return out;
+  };
+  return { values: mix(P.vertex, K, "v"), region: mix(P.region, R, "r"), voxel: mix(P.voxel, V, "x"),
+           scan: Math.min(P.nTr, Math.max(1, Math.floor(tt / TR) + 1)) };
+}
+
+function paint(frame) {
+  const vals = frame?.values, vmax = state.vmax, Bs = state.braak, hover = state.hover, S = spread;
+  if (S && vals) {
+    for (let i = 0; i < S.dispV.length; i++) {
+      let s = 0, ws = 0;
+      for (let p = S.ptr[i]; p < S.ptr[i + 1]; p++) { s += S.w[p] * vals[S.lit[p]]; ws += S.w[p]; }
+      S.value[i] = s / ws;
+    }
+  }
+  const signed = CMAPS[state.cmap].signed, o = [0, 0, 0], vB = state.bundle?.vertexBraak, vR = state.bundle?.vertexRegion;
+  const mixInto = (c, a) => { o[0] += (c.r - o[0]) * a; o[1] += (c.g - o[1]) * a; o[2] += (c.b - o[2]) * a; };
+  for (const H of hemis) {
+    const arr = H.col.array, gl = H.glow.array;
+    for (let v = 0; v < H.n; v++) {
+      const g = H.off + v;
+      o[0] = base[g * 3]; o[1] = base[g * 3 + 1]; o[2] = base[g * 3 + 2];
+      let gr = 0, gg = 0, gb = 0;
+      const st = vB ? vB[g] : 0;
+      if (Bs > 0 && st >= 1 && st <= Bs) {
+        mixInto(colors.ablated, 0.72);
+      } else {
+        if (hover !== null && vR && vR[g] === hover) mixInto(colors.hl, 0.5);
+        const di = S ? S.dispOf[g] : -1;
+        if (di >= 0) {
+          const cov = S.cov[di];
+          mixInto(colors.lit, 0.35 * cov);
+          if (vals) {
+            const x = S.value[di] / vmax, a = alphaOf(Math.min(1, Math.abs(x))) * cov;
+            if (a > 0) {
+              const li = lutAt(signed ? x : Math.abs(x));
+              o[0] += (lut[li] - o[0]) * a; o[1] += (lut[li + 1] - o[1]) * a; o[2] += (lut[li + 2] - o[2]) * a;
+              const k = a * a;
+              gr = lut[li] * k; gg = lut[li + 1] * k; gb = lut[li + 2] * k;
+            }
+          }
+        }
+      }
+      arr[v * 3] = o[0]; arr[v * 3 + 1] = o[1]; arr[v * 3 + 2] = o[2];
+      gl[v * 3] = gr; gl[v * 3 + 1] = gg; gl[v * 3 + 2] = gb;
+    }
+    H.col.needsUpdate = true; H.glow.needsUpdate = true;
+  }
+  emissiveUniform.value = [0.2, 0.55, 0.8][state.glow];
+}
+
+// ------------------------------------------------------------------ slices
+
+const panes = [...document.querySelectorAll("#slices canvas")];
+const sliceImg = {};
+
+function placeCursorAtPeak(regionIdx) {
+  if (!state.bundle || !vol) return;
+  const B = state.bundle, E = state.voxEnergy, lab = regionIdx === null ? -1 : vol.regionLabel[regionIdx];
+  let best = -1, bestE = -1;
+  for (let i = 0; i < B.voxelIndex.length; i++) {
+    if (lab >= 0 && B.labelVol[B.voxelIndex[i]] !== lab) continue;
+    const e = E ? E[i] : B.voxelR[i];
+    if (e > bestE) { bestE = e; best = i; }
+  }
+  if (best < 0) return;
+  const [ni, nj, nk] = vol.shape, f = B.voxelIndex[best];
+  state.cursor = [Math.floor(f / (nj * nk)), Math.floor(f / nk) % nj, f % nk];
+  state.dirty = true;
+}
+
+function planeDims(plane) {
+  const [ni, nj, nk] = vol.shape;
+  return plane === "axial" ? [ni, nj] : plane === "coronal" ? [ni, nk] : [nj, nk];
+}
+// pixel (x, y) of a plane -> volume index triple, with the cursor fixing the third axis
+function planeVoxel(plane, x, y) {
+  const [ni, nj, nk] = vol.shape, [ci, cj, ck] = state.cursor;
+  if (plane === "axial") return [x, nj - 1 - y, ck];
+  if (plane === "coronal") return [x, cj, nk - 1 - y];
+  return [ci, x, nk - 1 - y];
+}
+
+function drawSlices(frame) {
+  if (!vol || !state.cursor || !lut) return;
+  const B = state.bundle, [ni, nj, nk] = vol.shape, under = state.under === "t1" ? vol.t1 : vol.epi;
+  const vals = frame?.voxel, vmax = state.voxmax, signed = CMAPS[state.cmap].signed;
+  const hoverLab = state.hover !== null ? vol.regionLabel[state.hover] : -1, labB = B.meta.label_braak, Bs = state.braak;
+  const hl = hexRGB(getComputedStyle(document.documentElement).getPropertyValue("--hl").trim());
+  const toS = (c) => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055);
+  for (const cv of panes) {
+    const plane = cv.dataset.plane, [W, H] = planeDims(plane);
+    const key = `${plane}${W}x${H}`;
+    sliceImg[key] ??= new ImageData(W, H);
+    const img = sliceImg[key], px = img.data;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const [i, j, k] = planeVoxel(plane, x, y), f = (i * nj + j) * nk + k, o = (y * W + x) * 4;
+        let r = under[f], g = r, b = r;
+        const lab = B.labelVol[f];
+        if (lab !== 255 && Bs > 0 && labB[lab] >= 1 && labB[lab] <= Bs) { r *= 0.35; g *= 0.3; b *= 0.3; }
+        else {
+          if (hoverLab >= 0 && lab === hoverLab) { r += (hl[0] * 255 - r) * 0.45; g += (hl[1] * 255 - g) * 0.45; b += (hl[2] * 255 - b) * 0.45; }
+          const li = vol.litOf[f];
+          if (li >= 0 && vals) {
+            const xv = vals[li] / vmax, a = alphaOf(Math.min(1, Math.abs(xv)));
+            if (a > 0) {
+              const c = lutAt(signed ? xv : Math.abs(xv));
+              r += (toS(lut[c]) * 255 - r) * a; g += (toS(lut[c + 1]) * 255 - g) * a; b += (toS(lut[c + 2]) * 255 - b) * a;
+            }
+          }
+        }
+        px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = 255;
+      }
+    }
+    const ctx = cv.getContext("2d"), rect = cv.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio, 2), cw = Math.max(1, Math.round(rect.width * dpr)), ch = Math.max(1, Math.round(rect.height * dpr));
+    if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+    sliceImg[`${key}c`] ??= Object.assign(document.createElement("canvas"), { width: W, height: H });
+    const off = sliceImg[`${key}c`];
+    off.getContext("2d").putImageData(img, 0, 0);
+    const scale = Math.min(cw / W, ch / H), dw = W * scale, dh = H * scale, ox = (cw - dw) / 2, oy = (ch - dh) / 2;
+    cv._map = { scale, ox, oy, W, H };
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, cw, ch);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(off, ox, oy, dw, dh);
+    // crosshair
+    const [ci, cj, ck] = state.cursor;
+    const cx = plane === "sagittal" ? cj : ci, cy = plane === "axial" ? nj - 1 - cj : nk - 1 - ck;
+    ctx.strokeStyle = `rgba(${hl.map((v) => Math.round(v * 255)).join(",")}, 0.75)`; ctx.lineWidth = Math.max(1, dpr);
+    ctx.beginPath();
+    ctx.moveTo(ox + (cx + 0.5) * scale, oy); ctx.lineTo(ox + (cx + 0.5) * scale, oy + dh);
+    ctx.moveTo(ox, oy + (cy + 0.5) * scale); ctx.lineTo(ox + dw, oy + (cy + 0.5) * scale);
+    ctx.stroke();
+  }
+  // voxel readout
+  const [ci, cj, ck] = state.cursor, f = (ci * nj + cj) * nk + ck, lab = B.labelVol[f], li = vol.litOf[f];
+  const name = lab === 255 ? "outside the analysis mask" : B.meta.labels[lab] === "Background" ? "unlabelled cortex" : B.meta.labels[lab];
+  const pred = li >= 0 && vals ? `predicted ${vals[li] >= 0 ? "+" : "−"}${Math.abs(vals[li]).toFixed(2)} z · held-out r ${B.voxelR[li].toFixed(2)}` : "not predicted above chance";
+  $("#voxel-info").textContent = `voxel ${ci}, ${cj}, ${ck} · ${name} · ${pred}`;
+}
+
+panes.forEach((cv) => {
+  const pick = (e) => {
+    const m = cv._map;
+    if (!m || !state.cursor) return;
+    const r = cv.getBoundingClientRect(), dpr = cv.width / r.width;
+    const x = Math.floor(((e.clientX - r.left) * dpr - m.ox) / m.scale), y = Math.floor(((e.clientY - r.top) * dpr - m.oy) / m.scale);
+    if (x < 0 || y < 0 || x >= m.W || y >= m.H) return;
+    state.cursor = planeVoxel(cv.dataset.plane, x, y);
+    state.dirty = true;
+  };
+  cv.addEventListener("pointerdown", (e) => { cv.setPointerCapture(e.pointerId); pick(e); });
+  cv.addEventListener("pointermove", (e) => { if (e.buttons) pick(e); });
+  cv.addEventListener("wheel", (e) => {
+    if (!state.cursor) return;
+    e.preventDefault();
+    const axis = cv.dataset.plane === "axial" ? 2 : cv.dataset.plane === "coronal" ? 1 : 0, step = e.deltaY > 0 ? -1 : 1;
+    state.cursor[axis] = Math.min(vol.shape[axis] - 1, Math.max(0, state.cursor[axis] + step));
+    state.dirty = true;
+  }, { passive: false });
+});
+
+// ----------------------------------------------------------------- regions
+
+function renderRegions() {
+  const regs = state.bundle.meta.regions;
+  $("#rlist").innerHTML = regs.map((r, i) => `<li data-r="${i}" tabindex="0" title="${r.label}: ${r.n_lit} of ${r.n_voxels} voxels beat chance">
+    <span class="rname">${r.name}</span>
+    ${r.column === null ? `<span class="rnone">no reliable signal</span>` : `<span class="rbar"><i></i></span>`}
+    <span class="braak">${ROMAN[r.braak]}</span></li>`).join("");
+  updateRegions(null);
+}
+
+function updateRegions(frame) {
+  const regs = state.bundle?.meta.regions;
+  if (!regs) return;
+  document.querySelectorAll("#rlist li").forEach((li, i) => {
+    const r = regs[i], gone = state.braak > 0 && r.braak >= 1 && r.braak <= state.braak;
+    li.classList.toggle("gone", gone);
+    li.classList.toggle("sel", i === state.selected);
+    const bar = li.querySelector(".rbar i");
+    if (!bar) return;
+    const v = gone || !frame ? 0 : frame.region[r.column] / state.rmax, a = Math.min(1, Math.abs(v)) * 50;
+    bar.style.left = v >= 0 ? "50%" : `${50 - a}%`;
+    bar.style.width = `${a}%`;
+    bar.style.background = v >= 0 ? "var(--pos)" : "var(--neg)";
+  });
+}
+
+function bindRegions() {
+  const list = $("#rlist");
+  const idx = (e) => { const li = e.target.closest("li"); return li ? Number(li.dataset.r) : null; };
+  list.addEventListener("pointerover", (e) => { const i = idx(e); if (i !== null && i !== state.hover) { state.hover = i; state.dirty = true; } });
+  list.addEventListener("pointerleave", () => { state.hover = null; state.dirty = true; });
+  const pick = (i) => {
+    if (i === null) return;
+    if (state.bundle.meta.regions[i].column !== null) { state.selected = i; drawTimelineBase(); }
+    if (state.view === "slices") placeCursorAtPeak(i);
+    state.hover = i; state.dirty = true;
+  };
+  list.addEventListener("click", (e) => pick(idx(e)));
+  list.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(idx(e)); } });
+  list.addEventListener("focusin", (e) => { state.hover = idx(e); state.dirty = true; });
+  list.addEventListener("focusout", () => { state.hover = null; state.dirty = true; });
+}
+
+function updateKept() {
+  const Bs = state.braak, E = state.energy, B = state.bundle;
+  let kept = 0, total = 0, removed = 0, staged = 0;
+  if (E && B) {
+    B.vertexIndex.forEach((v, i) => {
+      total += E[i];
+      const st = B.vertexBraak[v];
+      if (!(Bs > 0 && st >= 1 && st <= Bs)) kept += E[i];
+    });
+    for (const st of B.vertexBraak) { if (st >= 1) { staged++; if (st <= Bs) removed++; } }
+  }
+  $("#kept").textContent = total ? `${Math.round((100 * kept) / total)}%` : "–";
+  $("#kept-note").innerHTML = `of the predicted response kept<br>${Bs ? `${Math.round((100 * removed) / staged)}% of cortex removed, stages I–${ROMAN[Bs]}` : "no cortex removed"}`;
+}
+
+// ---------------------------------------------------------------- timeline
+
+const tl = $("#tl"), tctx = tl.getContext("2d");
+let tlBase = null;
+
+function sizeTimeline() {
+  const r = tl.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio, 2);
+  tl.width = Math.max(1, Math.round(r.width * dpr)); tl.height = Math.max(1, Math.round(r.height * dpr));
+  drawTimelineBase();
+}
+
+function drawTimelineBase() {
+  const cssW = tl.getBoundingClientRect().width;
+  if (!state.stim || !cssW || !colors.css) return;
+  const W = tl.width, H = tl.height, dpr = W / cssW;
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const g = c.getContext("2d"), css = colors.css, dur = state.stim.duration;
+  const wavH = H * 0.42, crsTop = H * 0.5, crsH = H * 0.4, axisY = H - 2;
+  const s = state.stim.samples, n = Math.min(s.length, Math.floor(dur * SR)), per = n / W;
+  g.fillStyle = css["--ink-3"];
+  for (let x = 0; x < W; x++) {
+    let lo = 0, hi = 0;
+    const a = Math.floor(x * per), b = Math.min(n, Math.floor((x + 1) * per));
+    for (let i = a; i < b; i += 4) { lo = Math.min(lo, s[i]); hi = Math.max(hi, s[i]); }
+    g.fillRect(x, wavH / 2 - hi * wavH / 2, 1, Math.max(1, (hi - lo) * wavH / 2));
+  }
+  const reg = state.bundle?.meta.regions[state.selected], P = state.pred, mid = crsTop + crsH / 2;
+  g.fillStyle = css["--rule"];
+  g.fillRect(0, mid, W, Math.max(1, dpr * 0.75));
+  if (P && reg && reg.column !== null) {
+    const R = state.bundle.nRegionCols, xs = (k) => (((k + 0.5) * TR) / dur) * W;
+    for (const sign of [1, -1]) {
+      g.beginPath(); g.moveTo(xs(0), mid);
+      for (let k = 0; k < P.nTr; k++) {
+        const v = P.region[k * R + reg.column] / state.rmax;
+        g.lineTo(xs(k), mid - Math.max(0, sign * v) * sign * (crsH / 2));
+      }
+      g.lineTo(xs(P.nTr - 1), mid); g.closePath();
+      g.fillStyle = sign > 0 ? css["--pos"] : css["--neg"];
+      g.globalAlpha = 0.85; g.fill(); g.globalAlpha = 1;
+    }
+    $("#tl-left").textContent = `waveform · predicted ${reg.name.toLowerCase()}`;
+  }
+  g.fillStyle = css["--ink-3"]; g.font = `${10 * dpr}px "JetBrains Mono", monospace`; g.textBaseline = "bottom";
+  const step = dur > 90 ? 30 : dur > 40 ? 10 : 5;
+  for (let t = step; t < dur; t += step) {
+    const x = (t / dur) * W;
+    g.fillRect(x, axisY - 4 * dpr, 1, 4 * dpr);
+    g.fillText(fmt(t), x + 3 * dpr, axisY);
+  }
+  tlBase = c;
+}
+
+function drawTimeline(t) {
+  const cssW = tl.getBoundingClientRect().width;
+  if (!tlBase || !cssW) return;
+  const W = tl.width, H = tl.height, dur = state.stim.duration, dpr = W / cssW;
+  tctx.clearRect(0, 0, W, H);
+  tctx.drawImage(tlBase, 0, 0);
+  const x = (t / dur) * W;
+  if (state.timing === "scan" && state.bundle) {
+    const x0 = Math.max(0, ((t - state.bundle.meta.peak_delay_s) / dur) * W);
+    tctx.fillStyle = colors.css["--pos"]; tctx.globalAlpha = 0.14;
+    tctx.fillRect(x0, 0, Math.max(0, x - x0), H * 0.44); tctx.globalAlpha = 1;
+  }
+  tctx.fillStyle = colors.css["--ink"];
+  tctx.fillRect(Math.round(x), 0, Math.max(1, Math.round(1.5 * dpr)), H);
+}
+
+function seekFromEvent(e) {
+  if (!state.stim) return;
+  const r = tl.getBoundingClientRect(), t = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * state.stim.duration;
+  const was = state.playing;
+  stop(false);
+  state.offset = t;
+  if (was) play();
+  state.dirty = true;
+}
+tl.addEventListener("pointerdown", (e) => { tl.setPointerCapture(e.pointerId); seekFromEvent(e); });
+tl.addEventListener("pointermove", (e) => { if (e.buttons) seekFromEvent(e); });
+
+// ---------------------------------------------------------------- playback
+
+const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+const now = () => (state.playing ? audio().currentTime - state.startedAt : state.offset);
+
+async function play() {
+  if (!state.stim) return;
+  await audio().resume();
+  if (state.offset >= state.stim.duration - 0.05) state.offset = 0;
+  const src = audio().createBufferSource();
+  src.buffer = state.stim.buffer;
+  src.connect(audio().destination);
+  src.start(0, state.offset);
+  src.onended = () => { if (state.source === src) { state.playing = false; state.source = null; state.offset = 0; setPlayIcon(); state.dirty = true; } };
+  state.source = src; state.startedAt = audio().currentTime - state.offset; state.playing = true;
+  setPlayIcon();
+}
+
+function stop(reset) {
+  if (state.source) {
+    state.offset = now();
+    const s = state.source; state.source = null;
+    try { s.stop(); } catch { /* already stopped */ }
+  }
+  state.playing = false;
+  if (reset) state.offset = 0;
+  setPlayIcon();
+}
+
+function setPlayIcon() {
+  $("#play-icon").innerHTML = state.playing ? '<path d="M6 4.5h4.5v15H6zM13.5 4.5H18v15h-4.5z"/>' : '<path d="M7 4.5v15l13-7.5z"/>';
+  $("#play").setAttribute("aria-label", state.playing ? "Pause" : "Play");
+}
+
+$("#play").addEventListener("click", () => (state.playing ? stop(false) : play()));
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && !e.target.closest("input, select, button, li, textarea")) { e.preventDefault(); state.playing ? stop(false) : play(); }
+});
+
+// ---------------------------------------------------------------- controls
+
+function setView(view) {
+  state.view = view;
+  document.querySelectorAll("[data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === view)));
+  const sliced = view === "slices";
+  $("#slices").hidden = !sliced;
+  canvas.hidden = sliced; $("#blob").hidden = sliced; $("#orient").hidden = sliced; $("#reset").hidden = sliced;
+  $("#stage").classList.toggle("sliced", sliced);
+  $("#lit-note").textContent = sliced ? "coloured voxels: where the model beats chance" : "tinted cortex: where the model beats chance";
+  if (sliced) { if (!state.cursor) placeCursorAtPeak(null); } else layout();
+  updateTicks();
+  state.dirty = true;
+}
+document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
+const radio = (name, fn) => document.querySelectorAll(`input[name="${name}"]`).forEach((el) => el.addEventListener("change", () => fn(el.value)));
+radio("surf", (v) => { state.surface = v; applySurface(); });
+radio("timing", (v) => { state.timing = v; if (state.sub) timingNote(); state.dirty = true; });
+radio("glow", (v) => { state.glow = Number(v); state.dirty = true; });
+radio("spread", (v) => { state.spread = Number(v); buildSpread(); });
+radio("under", (v) => { state.under = v; state.dirty = true; });
+function timingNote() {
+  const d = state.bundle.meta.peak_delay_s;
+  $("#timing-note").textContent = state.timing === "scan"
+    ? `Shows the response a scanner would record now, about ${d} s after the sound that drives it.`
+    : `Shifted back by this listener's peak delay (${d} s) so colour lines up with the sound. An approximation.`;
+}
+$("#braak").addEventListener("input", (e) => { state.braak = Number(e.target.value); updateKept(); state.dirty = true; });
+$("#reset").addEventListener("click", () => fitCamera(true));
+$("#sub").addEventListener("change", (e) => loadSubject(e.target.value).catch((err) => status(err.message, "error")));
+$("#file").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ""; });
+const drop = $("#drop");
+["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((t) => drop.addEventListener(t, () => drop.classList.remove("over")));
+drop.addEventListener("drop", (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+
+new ResizeObserver(() => {
+  const r = canvas.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  renderer.setSize(r.width, r.height, false);
+  sizeTargets(r.width, r.height);
+  camera.aspect = r.width / r.height;
+  camera.updateProjectionMatrix();
+  fitCamera(false);
+  state.dirty = true;
+}).observe($("#wrap"));
+new ResizeObserver(sizeTimeline).observe(tl);
+new ResizeObserver(() => { state.dirty = true; }).observe($("#slices"));
+const themeChanged = () => { if (mesh) readColors(); renderCmapPicker(); };
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", themeChanged);
+new MutationObserver(themeChanged).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+// -------------------------------------------------------------------- loop
+
+let lastShown = -1, moving = false;
+controls.addEventListener("change", () => { moving = true; });
+function tick() {
+  requestAnimationFrame(tick);
+  controls.update();
+  if (!mesh || !state.bundle) return;
+  const sliced = state.view === "slices";
+  if (state.dirty || state.playing) {
+    let t = now();
+    if (state.stim && t >= state.stim.duration) { stop(true); t = 0; }
+    const frame = frameAt(t);
+    if (sliced) drawSlices(frame); else paint(frame);
+    updateRegions(frame);
+    drawTimeline(t);
+    if (state.stim) {
+      const shown = Math.floor(t * 10);
+      if (shown !== lastShown || state.dirty) {
+        $("#clock").innerHTML = `${fmt(t)}<small> / ${fmt(state.stim.duration)}</small>`;
+        $("#frame").textContent = frame ? `scan ${frame.scan} of ${state.pred.nTr} · ${state.timing === "scan" ? "as recorded" : "aligned to sound"}` : "";
+        lastShown = shown;
+      }
+    }
+    if (!sliced) moving = true;
+    state.dirty = false;
+  }
+  if (!sliced && moving) { renderFrame(); moving = false; }
+}
+
+// -------------------------------------------------------------------- boot
+
+(async () => {
+  renderProbes();
+  renderCmapPicker();
+  bindRegions();
+  try {
+    const [index, meta, pial, infl, faces, sulc, curv] = await Promise.all([
+      getJSON("index.json"), getJSON("mesh/meta.json"),
+      ...["pial.f32", "infl.f32", "faces.u32", "sulc.f32", "curv.f32"].map((f) => get(`mesh/${f}`)),
+    ]);
+    mesh = { meta, pial: new Float32Array(pial), infl: new Float32Array(infl), faces: new Uint32Array(faces),
+             sulc: new Float32Array(sulc), curv: new Float32Array(curv) };
+    buildScene();
+    buildAdjacency();
+    readColors();
+    $("#sub").innerHTML = index.subjects.map((s) => `<option value="${s}">Listener ${s}</option>`).join("");
+    await loadSubject(index.subjects[0]);
+    tick();
+    await loadProbe("major");
+  } catch (err) {
+    status(`The model files did not load (${err.message}). Reload the page to try again.`, "error");
+  }
+})();
+</script>

@@ -14,6 +14,12 @@ Delaying before dropping lets the first clip's features reach the TRs after it.
 Test rows are averaged over the four presentations of each clip, matching the
 repeat-averaged response they are scored against.
 
+Nuisance: every clip boundary carries the same 2 s fade-out/fade-in and cut, so
+it drives a generic response no feature distinguishes clips by. Delayed copies
+of a clip-onset impulse train (plus an intercept) are regressed out of the
+features and the responses with training-set betas -- an unpenalized nuisance
+band, without a third penalty for the banded-ridge search.
+
 Usage:
   python -m src.encoding --sub 001 --stage 2
   python -m src.encoding --sub 001 --stage 1 --source zenodo   # authors' cortical derivatives
@@ -59,21 +65,50 @@ def delayed(x, delays=DELAYS):
     return out
 
 
+def nuisance_design(sub):
+    """Clip-boundary regressors N_train (4800, 6) and N_test (600, 6): the onset
+    impulse train at each delay, plus an intercept, laid out like the design."""
+    def rows(task):
+        n_runs = len(run_numbers(sub, task))
+        x = np.zeros((len(F.run_events(sub, task, 1)) * TRS_PER_CLIP, 1), np.float32)
+        x[::TRS_PER_CLIP] = 1
+        return np.tile(delayed(x)[TRS_PER_CLIP:], (n_runs, 1))
+
+    order, _ = test_blocks(sub)
+    n_tr, n_te = rows("Training"), rows("Test")[:len(order) * TRS_PER_CLIP]  # identical per clip
+    return tuple(np.column_stack([n, np.ones(len(n), np.float32)]) for n in (n_tr, n_te))
+
+
+def residualize(A, N_train, N_test, A_test=None, chunk=10000):
+    """Remove the nuisance fit on training rows: A -= N_train @ beta (in place),
+    and the same beta's prediction from A_test if given. Returns beta."""
+    pinv = np.linalg.pinv(N_train)
+    beta = np.empty((N_train.shape[1], A.shape[1]), np.float32)
+    for i in range(0, A.shape[1], chunk):
+        beta[:, i:i + chunk] = pinv @ A[:, i:i + chunk]
+        A[:, i:i + chunk] -= N_train @ beta[:, i:i + chunk]
+        if A_test is not None:
+            A_test[..., i:i + chunk] -= N_test @ beta[:, i:i + chunk]
+    return beta
+
+
 def build_design(sub, cache):
-    """Delayed, training-standardized design matrices.
+    """Delayed, training-standardized design matrices, clip-boundary nuisance removed.
 
     Returns X_train {band: (4800, F * 5)}, X_test {band: (600, F * 5)}, the
-    training run of every row (CV folds) and the feature (mean, std) per band.
+    training run of every row (CV folds) and per band the feature (mean, std,
+    nuisance beta) -- everything needed to put new audio on the same footing.
     """
     timelines = {task: [F.run_features(sub, task, r, cache) for r in run_numbers(sub, task)]
                  for task in ("Training", "Test")}
+    N_train, N_test = nuisance_design(sub)
     stats = {}
     for band in F.BANDS:
         x = np.concatenate([t[band] for t in timelines["Training"]])
         stats[band] = (x.mean(0), x.std(0))
 
     def rows(task, band):
-        mu, sd = stats[band]
+        mu, sd = stats[band][:2]
         return np.concatenate([delayed(((t[band] - mu) / sd).astype(np.float32))[TRS_PER_CLIP:]
                                for t in timelines[task]])
 
@@ -84,6 +119,7 @@ def build_design(sub, cache):
         x = rows("Test", band)
         X_test[band] = np.concatenate([np.mean([x[s:s + TRS_PER_CLIP] for s in blocks[c]], axis=0)
                                        for c in order])
+        stats[band] += (residualize(X_train[band], N_train, N_test, X_test[band]),)
     n_rows = len(X_train[F.BANDS[0]]) // len(timelines["Training"])
     folds = np.repeat(np.arange(len(timelines["Training"])), n_rows)
     return X_train, X_test, folds, stats
@@ -195,6 +231,9 @@ def run(sub, stage, source):
     cache = dict(np.load(F.CACHE / "clips.npz"))
     X_train, X_test, folds, stats = build_design(sub, cache)
     Y_train, reps = load_responses(sub, source)
+    Y_train, reps = Y_train.astype(np.float32, copy=False), reps.astype(np.float32, copy=False)
+    N_train, N_test = nuisance_design(sub)
+    nuisance_beta = residualize(Y_train, N_train, N_test, reps)
     Y_test = reps.mean(0)
     res = {"ceiling": noise_ceiling(reps)}
     del reps
@@ -203,6 +242,7 @@ def run(sub, stage, source):
 
     out = DATA / "derivatives" / "encoding" / f"sub-{sub}" / source
     out.mkdir(parents=True, exist_ok=True)
+    np.save(out / "nuisance_beta.npy", nuisance_beta)
     models = [("acoustic",)] if stage == 1 else [("acoustic",), ("structural",), tuple(F.BANDS)]
     for bands in models:
         name = "joint" if len(bands) > 1 else bands[0]
@@ -224,7 +264,7 @@ def run(sub, stage, source):
         res["unique_structural"] = res["r2_joint"] - res["r2_acoustic"]
         res["shared"] = res["r2_acoustic"] + res["r2_structural"] - res["r2_joint"]
     np.savez(out / f"stage{stage}.npz", **res, delays=np.array(DELAYS),
-             **{f"feat_{k}_{b}": v for b in F.BANDS for k, v in zip(("mean", "std"), stats[b])})
+             **{f"feat_{k}_{b}": v for b in F.BANDS for k, v in zip(("mean", "std", "nuisance"), stats[b])})
     if source == "preproc":
         write_maps(sub, out, res)
 

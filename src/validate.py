@@ -119,7 +119,8 @@ def run(sub, n_perm, n_boot):
     d, out = paths(sub)
     rng = np.random.default_rng(0)
     res = np.load(out / "stage2.npz")
-    Y = np.load(d / "Resp_Test_Mean.npy")
+    Y = np.load(d / "Resp_Test_Mean.npy").astype(np.float32)
+    Y -= E.nuisance_design(sub)[1] @ np.load(out / "nuisance_beta.npy")  # as in the fit
     preds = predictions(sub)
     vox = pd.read_csv(d / "voxels.csv")
     vox["region"] = region_labels(vox)
