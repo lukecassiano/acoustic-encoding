@@ -53,6 +53,8 @@ button, input, select { font: inherit; color: inherit; }
 .models button span { font: 11px var(--font-mono); color: var(--ink-3); }
 .models button[aria-selected="true"] { border-bottom-color: var(--ink); }
 .models button:disabled { cursor: not-allowed; opacity: 0.55; }
+.theme { align-self: center; flex: none; }
+.theme label { padding: 4px 10px; }
 
 /* ---- panels */
 .panel h2 { margin: 0 0 10px; font: 500 11px/1 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
@@ -220,6 +222,11 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
       <button role="tab" aria-selected="false" disabled title="Ridge model on MERT embeddings, fitted to the same listeners. Not fitted yet."><b>MERT</b><span>not fitted yet</span></button>
       <button role="tab" aria-selected="false" disabled title="Meta's TRIBE v2 brain-response model. Licence and output space still to check."><b>TRIBE v2</b><span>not connected yet</span></button>
     </nav>
+    <div class="seg theme" role="radiogroup" aria-label="Theme">
+      <input type="radio" name="theme" id="th-auto" value="auto" checked><label for="th-auto">Auto</label>
+      <input type="radio" name="theme" id="th-light" value="light"><label for="th-light">Light</label>
+      <input type="radio" name="theme" id="th-dark" value="dark"><label for="th-dark">Dark</label>
+    </div>
   </header>
 
   <aside class="listen panel" aria-label="Stimulus and display">
@@ -1556,7 +1563,22 @@ new ResizeObserver(() => {
 new ResizeObserver(sizeTimeline).observe(tl);
 new ResizeObserver(() => { state.dirty = true; }).observe($("#slices"));
 new ResizeObserver(() => { specCache.t = -1; state.dirty = true; }).observe($(".metrics"));
-const themeChanged = () => { if (mesh) readColors(); renderCmapPicker(); };
+const themeChanged = () => { if (mesh) readColors(); renderCmapPicker(); specCache.t = -1; state.dirty = true; };
+
+// Theme: Auto keeps whatever the host or the system says; Light / Dark pin it.
+const hostTheme = document.documentElement.getAttribute("data-theme");
+function applyTheme(choice) {
+  const root = document.documentElement;
+  if (choice === "auto") { if (hostTheme) root.setAttribute("data-theme", hostTheme); else root.removeAttribute("data-theme"); }
+  else root.setAttribute("data-theme", choice);
+  try { localStorage.setItem("camp-theme", choice); } catch { /* storage unavailable: choice lasts this visit */ }
+}
+let savedTheme = "auto";
+try { savedTheme = localStorage.getItem("camp-theme") || "auto"; } catch { /* no storage */ }
+if (!["auto", "light", "dark"].includes(savedTheme)) savedTheme = "auto";
+$(`#th-${savedTheme}`).checked = true;
+applyTheme(savedTheme);
+document.querySelectorAll('input[name="theme"]').forEach((el) => el.addEventListener("change", () => applyTheme(el.value)));
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", themeChanged);
 new MutationObserver(themeChanged).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
