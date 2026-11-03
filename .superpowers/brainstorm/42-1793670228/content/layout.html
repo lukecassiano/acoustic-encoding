@@ -1,0 +1,78 @@
+<h2>CAMP as a listener: two phases</h2>
+<p class="subtitle">During playback you watch the sound being processed. After it stops you get an analysis of what the aggregate response could mean for perception. Rough wireframes only; the styling would follow CAMP's cream look.</p>
+
+<div class="section">
+<h3>Phase 1: live, sensory only</h3>
+<p class="subtitle">Which arrangement makes the flow from sound source to cortex easiest to follow?</p>
+<div class="cards">
+
+  <div class="card" data-choice="a-side" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="display:flex;gap:8px;padding:10px;font:11px monospace">
+        <div style="flex:1;border:1px solid #999;border-radius:6px;padding:8px;min-height:150px">
+          <div class="label">room (top-down)</div>
+          <div style="position:relative;height:110px">
+            <div style="position:absolute;left:18%;top:20%">🔊<br>speaker</div>
+            <div style="position:absolute;left:58%;top:58%">◉ head</div>
+            <div style="position:absolute;left:30%;top:42%;color:#888">⋯ 2.4 m, 40° left</div>
+          </div>
+        </div>
+        <div style="flex:1.3;border:1px solid #999;border-radius:6px;padding:8px;min-height:150px">
+          <div class="label">3D brain</div>
+          <div class="placeholder" style="height:110px">L / R auditory cortex lighting up</div>
+        </div>
+      </div>
+      <div style="margin:0 10px 10px;border:1px dashed #999;border-radius:6px;padding:6px;font:11px monospace;display:flex;justify-content:space-between">
+        <span>outer ear</span><span>→</span><span>cochlea</span><span>→</span><span>brainstem (ITD/ILD)</span><span>→</span><span>A1 core</span><span>→</span><span>belt</span>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. Room beside brain, pipeline underneath</h3>
+      <p>Close to the current page. The ear stages sit in a thin strip of small live readouts under the main view.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b-flow" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="display:flex;gap:6px;padding:10px;font:11px monospace;align-items:stretch">
+        <div style="flex:1;border:1px solid #999;border-radius:6px;padding:6px"><div class="label">room</div><div style="margin-top:30px">🔊 ⋯ ◉</div></div>
+        <div style="align-self:center">→</div>
+        <div style="flex:1;border:1px solid #999;border-radius:6px;padding:6px"><div class="label">ears</div><div style="margin-top:10px">L ▮▮▯<br>R ▮▯▯<br>ITD 0.3 ms<br>ILD 6 dB</div></div>
+        <div style="align-self:center">→</div>
+        <div style="flex:1;border:1px solid #999;border-radius:6px;padding:6px"><div class="label">cochlea</div><div style="margin-top:10px">▁▃▆▃▁▂<br>▁▂▅▆▂▁<br>(L, R)</div></div>
+        <div style="align-self:center">→</div>
+        <div style="flex:1.6;border:1px solid #999;border-radius:6px;padding:6px"><div class="label">cortex</div><div class="placeholder" style="height:90px;margin-top:6px">3D brain</div></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. Left-to-right signal path</h3>
+      <p>Every stage gets equal room, so you can see where a change in a variable first appears and how it carries forward.</p>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<div class="section">
+<h3>Phase 2: after the sound stops</h3>
+<div class="mockup">
+  <div class="mockup-header">Preview: aggregate analysis</div>
+  <div class="mockup-body" style="font:12px monospace">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <div style="border:1px solid #999;border-radius:6px;padding:8px">
+        <div class="label">sensory: ear and brainstem model</div>
+        location 40° L, 2.4 m<br>loudness 68 phon<br>L/R cortex 1.6 : 1
+      </div>
+      <div style="border:1px solid #999;border-radius:6px;padding:8px">
+        <div class="label">fitted CAMP bands</div>
+        acoustic ▮▮▮▮▯ (timbre, pitch)<br>structural ▮▮▯▯▯ (pulse, key, roughness)
+      </div>
+      <div style="border:1px solid #999;border-radius:6px;padding:8px">
+        <div class="label">predicted affect (theory)</div>
+        arousal ▮▮▮▮▯<br>valence ▮▮▯▯▯<br>tension ▮▮▮▯▯<br>groove ▮▮▮▮▯
+      </div>
+    </div>
+    <p style="margin-top:8px">Paragraph: "Most of the response sits in the right belt cortex, driven by roughness and unstable harmony, so you'd expect high-arousal, tense listening..." Each claim is tagged by where it comes from: <b>fitted</b>, <b>mechanistic</b> or <b>theory</b>.</p>
+  </div>
+</div>
+</div>
