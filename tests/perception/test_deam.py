@@ -96,3 +96,19 @@ def test_excerpts_raises_when_no_metadata_file(tmp_path, monkeypatch):
     monkeypatch.setattr(deam, "DEAM", root)
     with pytest.raises(FileNotFoundError):
         excerpts()
+
+
+def test_group_key_merges_artist_title_variants(tmp_path, monkeypatch):
+    root = layout(tmp_path)
+    names = ["Kevin MacLeod", "Kevin MacLeod-Night on the Docks", "Cooper-Moore",
+             "Cooper-Moore & Assif Tsahar", "Paul  Wine  Jones", "Paul Wine Jones"]
+    for i, n in enumerate(names):
+        (root / deam.AUDIO_REL / f"{100 + i}.mp3").write_bytes(b"x")
+    rows = "".join(f'{100 + i},"{n}"\n' for i, n in enumerate(names))
+    (root / deam.METADATA_REL[1]).write_text("Id,Artist\n" + rows, encoding="utf-8")
+    monkeypatch.setattr(deam, "DEAM", root)
+    g = excerpts().set_index("song_id").group
+    assert g[100] == g[101] == "kevin macleod"
+    assert g[102] == "cooper-moore"
+    assert g[103] == "cooper-moore & assif tsahar"
+    assert g[104] == g[105] == "paul wine jones"

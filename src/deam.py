@@ -67,6 +67,15 @@ def _artists() -> dict[int, str]:
     return out
 
 
+def _merge_title(key: str, keys: set[str]) -> str:
+    """Fold "artist-title" keys into an existing "artist" key; otherwise unchanged."""
+    if "-" in key and not key.startswith("song-"):
+        prefix = key.split("-", 1)[0].strip()
+        if prefix in keys:
+            return prefix
+    return key
+
+
 def excerpts() -> pd.DataFrame:
     """Included songs whose mp3 exists: song_id, path (absolute), artist, group."""
     artists = _artists()
@@ -76,8 +85,10 @@ def excerpts() -> pd.DataFrame:
             continue
         sid = int(p.stem)
         art = artists.get(sid, "")
-        rows.append((sid, p.resolve(), art, art.lower().strip() if art else f"song-{sid}"))
+        rows.append((sid, p.resolve(), art, " ".join(art.split()).lower() if art else f"song-{sid}"))
     df = pd.DataFrame(rows, columns=["song_id", "path", "artist", "group"])
+    keys = set(df.group)
+    df["group"] = [_merge_title(k, keys) for k in df.group]
     df = df.sort_values("song_id").reset_index(drop=True)
     df["song_id"] = df["song_id"].astype(int)
     return df
