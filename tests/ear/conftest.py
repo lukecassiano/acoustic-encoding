@@ -23,3 +23,11 @@ def tone(f, db, dur=1.0):
 
 
 x, y, noise = noise_rms(0.1), noise_rms(0.1), noise_rms(0.1)
+
+# Cochlea fixtures: ERB-spaced centre frequencies and a unit impulse (long enough for sub-Hz bins at 50 Hz).
+from src.ear.cochlea import erb_space  # noqa: E402
+
+cf = erb_space()
+impulse = np.zeros(2 ** 16)
+impulse[0] = 1.0
+freqs = np.fft.rfftfreq(len(impulse), 1 / EAR_SR)
