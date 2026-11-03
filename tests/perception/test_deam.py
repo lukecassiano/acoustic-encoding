@@ -19,6 +19,16 @@ def make_wav(tmp_path, sr=48000, channels=2, sampwidth=1, sec=1.0):
     return p
 
 
+CRLF, TAB, Q = chr(13) + chr(10), chr(9), chr(34)
+RAW_2013 = (
+    'song_id,file_name,Artist,Song title' + CRLF
+    + '3,' + Q + TAB + '3.mp3' + Q + ',' + Q + 'The Band' + TAB + Q + ',' + Q + TAB + 'X' + TAB + Q + CRLF
+    + '4,' + Q + TAB + '4.mp3' + Q + ',' + Q + TAB + Q + ',' + Q + TAB + 'Y' + TAB + Q + CRLF
+).encode()
+RAW_2014 = chr(10).join(['Id,Artist,Album,Track,Genre,last.fm labels',
+                         '1999,Ragged Duo,A,T,Rock,tag1,tag2,,,,', '5,,A,T,Rock', ''])
+
+
 def layout(tmp_path):
     root = tmp_path / "deam"
     (root / deam.AUDIO_REL).mkdir(parents=True)
@@ -26,7 +36,8 @@ def layout(tmp_path):
         (root / deam.AUDIO_REL / f"{sid}.mp3").write_bytes(b"x")
     meta = root / deam.METADATA_REL[0]
     meta.parent.mkdir(parents=True)
-    pd.DataFrame({"song_id": [3, 4], "Artist": ["  The Band ", None]}).to_csv(meta, index=False)
+    meta.write_bytes(RAW_2013)
+    (root / deam.METADATA_REL[1]).write_text(RAW_2014, encoding='utf-8')
     static = root / deam.STATIC_REL[0]
     static.parent.mkdir(parents=True)
     pd.DataFrame({"song_id": [3, 4, 2001], " valence_mean": [5.0, 4.0, 3.0],
@@ -47,7 +58,7 @@ def test_excerpts_fixture(tmp_path, monkeypatch):
     assert list(df.columns) == ["song_id", "path", "artist", "group"]
     assert list(df.song_id) == [3, 4, 5, 1999]
     assert df.path.map(lambda p: p.is_absolute()).all()
-    assert list(df.group) == ["the band", "song-4", "song-5", "song-1999"]
+    assert list(df.group) == ["the band", "song-4", "song-5", "ragged duo"]
 
 
 def test_load_excerpt_mono_both_rates(tmp_path):
@@ -80,7 +91,8 @@ def test_excerpts_raises_on_metadata_without_artist_column(tmp_path, monkeypatch
 
 def test_excerpts_raises_when_no_metadata_file(tmp_path, monkeypatch):
     root = layout(tmp_path)
-    (root / deam.METADATA_REL[0]).unlink()
+    for r in deam.METADATA_REL:
+        (root / r).unlink()
     monkeypatch.setattr(deam, "DEAM", root)
     with pytest.raises(FileNotFoundError):
         excerpts()

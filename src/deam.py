@@ -1,10 +1,9 @@
 """DEAM (Aljanaki, Yang & Soleymani 2017) loader. Ratings are gated behind a freeze.
 
-The directory layout below is the DOCUMENTED one, not yet verified against the real
-archives; confirm it when the archives arrive (each path is a one-line change):
+Directory layout (verified against the real archives, 2026-11-02):
 
     data/deam/MEMD_audio/<song_id>.mp3
-    data/deam/metadata/metadata_2013.csv, metadata_2014.csv      (song_id, Artist, ...)
+    data/deam/metadata/metadata_2013.csv, metadata_2014.csv      (2013: song_id,...,Artist; 2014: Id,Artist,... ragged)
     data/deam/annotations/annotations averaged per song/song_level/
         static_annotations_averaged_songs_1_2000.csv             (song_id, valence_mean, arousal_mean)
 
@@ -12,6 +11,7 @@ Inclusion: the 2013-2014 45 s excerpts only (song_id < 2000); the 2015 full song
 Nothing here reads rating values unless load_ratings is given a freeze file with a go-ahead line.
 """
 
+import csv
 import re
 from pathlib import Path
 
@@ -36,7 +36,11 @@ class FreezeError(Exception):
     """Ratings requested without a signed go-ahead in the freeze file."""
 
 
+ID_ALIASES = ("song_id", "id")
+
+
 def _artists() -> dict[int, str]:
+    """song_id -> artist. csv-parsed so ragged rows (spilled last.fm tags) cannot misalign."""
     out: dict[int, str] = {}
     found = False
     for rel in METADATA_REL:
@@ -44,13 +48,20 @@ def _artists() -> dict[int, str]:
         if not p.exists():
             continue
         found = True
-        df = pd.read_csv(p, skipinitialspace=True)
-        cols = {c.strip().lower(): c for c in df.columns}
-        if "song_id" not in cols or "artist" not in cols:
-            raise ValueError(f"{p} needs song_id and artist columns; found {list(df.columns)}")
-        for sid, art in zip(df[cols["song_id"]], df[cols["artist"]]):
-            if pd.notna(sid) and pd.notna(art) and str(art).strip():
-                out[int(sid)] = str(art).strip()
+        with open(p, newline="", encoding="utf-8-sig") as fh:
+            rows = csv.reader(fh)
+            header = [c.strip() for c in next(rows, [])]
+            low = [c.lower() for c in header]
+            i_id = next((low.index(a) for a in ID_ALIASES if a in low), None)
+            i_art = low.index("artist") if "artist" in low else None
+            if i_id is None or i_art is None:
+                raise ValueError(f"{p} needs an id ({'/'.join(ID_ALIASES)}) and artist column; found {header}")
+            for row in rows:
+                if len(row) <= max(i_id, i_art):
+                    continue
+                sid, art = row[i_id].strip(), row[i_art].strip()
+                if sid.isdigit() and art:
+                    out[int(sid)] = art
     if not found:
         raise FileNotFoundError(f"no DEAM metadata file found under {DEAM}: {[str(r) for r in METADATA_REL]}")
     return out
