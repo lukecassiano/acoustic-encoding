@@ -19,7 +19,7 @@ def test_itd_low_frequency_matches_geometry():  # 500 Hz tone at 90 deg left
     # the model's own expectation: Woodworth ITD plus the shadow filter's far-minus-near phase delay
     # (the known low-frequency ITD enlargement, Kuhn 1977)
     expected = head_itd_s(90.0) + _phase_delay(np.pi, e.left.cfs[ch]) - _phase_delay(0.0, e.left.cfs[ch])
-    assert abs(np.median(e.cues["itd_s"][ch]) - expected) < 5e-5
+    assert abs(np.nanmedian(e.cues["itd_s"][ch]) - expected) < 5e-5
 
 
 def test_duplex_high_frequency_itd_ambiguous():  # 4 kHz pure tone: fine structure lost after 1 kHz low-pass
@@ -34,9 +34,25 @@ def test_ild_grows_with_frequency():
 
 def test_cone_of_confusion():  # 30 deg and 150 deg are mirror images about the interaural axis
     a, b = listen([Source(noise, 30.0, 1.0)]), listen([Source(noise, 150.0, 1.0)])
-    assert np.allclose(np.median(a.cues["itd_s"], 1), np.median(b.cues["itd_s"], 1), atol=2e-5)
+    assert np.allclose(np.nanmedian(a.cues["itd_s"], 1), np.nanmedian(b.cues["itd_s"], 1), atol=2e-5)
     assert np.allclose(np.median(a.cues["ild_db"], 1), np.median(b.cues["ild_db"], 1), atol=0.2)
 
 
 def test_spl_calibration():  # level at each ear; a tone, since the head shadows noise's highs even at 0 deg
     assert listen([Source(tone(250, 70), 0.0, 1.0)]).spl_db[0] == pytest.approx(70.0, abs=0.5)
+
+
+def test_short_input_gives_zero_width_cues():  # 20 ms < one 50 ms window
+    from src.ear.brainstem import hear
+    from src.ear.constants import N_CH
+    s = noise[: int(0.02 * EAR_SR)]
+    e = hear(s, s)
+    for k in ("itd_s", "ild_db", "prominence"):
+        assert e.cues[k].shape == (N_CH, 0)
+
+
+def test_silent_input_has_nan_itd_not_spurious():
+    e = listen([Source(np.zeros(EAR_SR), 0.0, 1.0)])
+    assert np.isnan(e.cues["itd_s"]).all()
+    assert (e.cues["prominence"] == 0).all()
+    assert np.isfinite(e.cues["ild_db"]).all()

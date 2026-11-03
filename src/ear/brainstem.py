@@ -23,10 +23,16 @@ def cues(left: CochleaOut, right: CochleaOut, sr):
     cross-correlation without mean removal, r(tau) = sum L(t) R(t+tau) / sqrt(sum L^2 sum R^2),
     over |tau| <= ITD_MAX_LAG_S with parabolic peak interpolation. ILD comes from basilar-membrane
     window energy (hair-cell compression would shrink it in dB).
+
+    Input shorter than one window gives (N_CH, 0) arrays. itd_s is NaN in windows with no usable
+    correlation (silence; prominence is 0 there), so consumers should use nan-aware reductions.
     """
     win, hop = int(round(CUE_WIN_S * sr)), int(round(CUE_HOP_S * sr))
     m = int(round(ITD_MAX_LAG_S * sr))
     n_ch, n = left.hc.shape
+    if n < win:  # shorter than one window: no cues, zero-width arrays
+        empty = np.zeros((n_ch, 0))
+        return {"itd_s": empty, "ild_db": empty.copy(), "prominence": empty.copy()}
     n_win = 1 + (n - win) // hop
 
     # ILD
@@ -49,9 +55,8 @@ def cues(left: CochleaOut, right: CochleaOut, sr):
     den = rm1 - 2 * peak + rp1
     interior = (k > 0) & (k < 2 * m) & (den < 0)
     frac = np.where(interior, 0.5 * (rm1 - rp1) / np.where(interior, den, 1.0), 0.0)
-    itd = (k - m + frac) / sr
-
     pmax = r.max(-1)
+    itd = np.where(pmax > 0, (k - m + frac) / sr, np.nan)  # NaN: silent / zero-norm window, no usable correlation
     prominence = np.where(pmax > 0, (pmax - r.min(-1)) / np.where(pmax > 0, pmax, 1.0), 0.0)
     return {"itd_s": itd, "ild_db": ild, "prominence": prominence}
 
