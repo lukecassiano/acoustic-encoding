@@ -446,3 +446,30 @@ def test_verdict(): assert verdict(0.01, 0.2) == "supported" and verdict(-0.1, 0
 - [ ] **Step 3: Implement** and run `python -m src.perception.export` for listeners 001–005.
 - [ ] **Step 4: Run.** Expected: PASS. Then update CLAUDE.md.
 - [ ] **Step 5: Commit** `feat(perception): page readout export`.
+
+---
+
+## Addendum (2026-11-02, Luke approved): PMEmo generalisation test (H4)
+
+Luke questioned DEAM's ecological validity (all Creative Commons production music). H4 tests whether the DEAM-trained readouts transfer, unchanged, to commercial chart music. It is pre-registered in the freeze before any rating is read. PMEmo 2019 (Zhang et al. 2018) is on disk at `data/pmemo/` (chorus/<musicId>.mp3, metadata.csv, annotations/); the archive sha256 is acfcd0e5…, and Luke downloaded it from the official Google Drive link.
+
+**H4 (frozen in the freeze file):**
+- Representations: L0, L1 and L2 are computed for every PMEmo chorus exactly as for DEAM (0°, 1 m, "studio", 0 dB; TR rows ≥ 5; same skip rules).
+- Readouts: the fitted DEAM-training-split models from Task 8 are applied unchanged. No PMEmo data is used for fitting, alpha selection or standardization.
+- Metric: Pearson r between predictions and PMEmo static ratings, per rating, with a 95% CI from 2,000 bootstrap resamples of PMEmo songs (SEED). PMEmo's rating scale differs from DEAM's, so the metric is r, not R².
+- Primary model: the page readout (L1 + L2), per listener. Per rating, H4 is supported if ≥ 4 of 5 listeners have CI lo > 0, not supported if ≥ 4 of 5 have CI hi < 0, and inconclusive otherwise.
+- Descriptive: L0, L0 + L1, L2 alone and the theory baseline.
+- **PMEmo audio is commercial and is never published or served by the website.**
+
+### Task 11: PMEmo loader, levels and freeze H4
+
+**Files:**
+- Create: `src/pmemo.py`, `tests/perception/test_pmemo.py`
+- Modify: `src/perception/levels.py` (add `--dataset {deam,pmemo}`; PMEmo cache at `data/perception/pmemo_levels/`, aggregate `data/perception/pmemo_levels.npz`, `pmemo_skipped.csv`), `docs/superpowers/specs/2026-11-02-perception-freeze.md` (H4 section plus a PMEmo counts placeholder table)
+
+**Interfaces:**
+- `src.pmemo.excerpts() -> DataFrame(song_id, path, artist, group)`. `group` follows the same normalization as DEAM but is unused for fitting.
+- `src.pmemo.load_ratings(freeze_path) -> DataFrame(song_id, valence, arousal)`. It uses the same go-ahead gate as `src.deam` (reuse `src.deam`'s gate function; do not duplicate the regex).
+- Audio decoding reuses `src.deam.load_excerpt`.
+
+Task 8 gains H4 (run after H1–H3 on the same fitted models). Task 9 gains a `generalisation.png` panel. Task 10 is unchanged.
