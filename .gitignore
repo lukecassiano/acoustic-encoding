@@ -220,3 +220,7 @@ __marimo__/
 # data and env
 data/
 .venv/
+
+# brainstorming mockups (local only)
+.superpowers/
+docs/neuraci-call-prep.md
