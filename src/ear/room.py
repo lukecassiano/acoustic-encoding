@@ -76,15 +76,20 @@ def head_itd_s(azimuth_deg):
     return float(_ear_delay(th_r) - _ear_delay(th_l))
 
 
-def _shadow(x, theta, sr):
-    """H(w) = (1 + j alpha w/2w0)/(1 + j w/2w0), bilinear with prewarping at w0."""
+def _shadow_coeffs(theta, sr):
+    """H(w) = (1 + j alpha w/2w0)/(1 + j w/2w0), bilinear with prewarping at w0 -> (b, a)."""
     w0 = C_SOUND / HEAD_RADIUS
     alpha = (1 + ALPHA_MIN / 2) + (1 - ALPHA_MIN / 2) * np.cos(theta / np.radians(THETA_MIN_DEG) * np.pi)
     tau = 1 / (2 * w0)
     k = w0 / np.tan(w0 / (2 * sr))
     b = np.array([1 + alpha * tau * k, 1 - alpha * tau * k])
     a = np.array([1 + tau * k, 1 - tau * k])
-    return lfilter(b / a[0], a / a[0], x)
+    return b / a[0], a / a[0]
+
+
+def _shadow(x, theta, sr):
+    b, a = _shadow_coeffs(theta, sr)
+    return lfilter(b, a, x)
 
 
 def _delay(x, seconds, n_out, sr):
