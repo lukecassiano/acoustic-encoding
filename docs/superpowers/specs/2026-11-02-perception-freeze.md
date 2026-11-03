@@ -7,7 +7,7 @@ Branch: `perception-1`. No ratings have been read. `src.deam.load_ratings` refus
 ## Inclusion and grouping (`src/deam.py`)
 - Included: DEAM 2013-2014 45 s excerpts only, `song_id < MAX_EXCERPT_ID = 2000`, with an existing `data/deam/MEMD_audio/<id>.mp3`. The 2015 full songs are excluded.
 - Skip rules (`levels.process_one`): unreadable; shorter than `MIN_DURATION_S = 9.0` s; silent (`SILENT_RMS = 1e-6`, RMS of the 22,050 Hz signal).
-- Group = artist, lower-cased and stripped, from `metadata_2013.csv` / `metadata_2014.csv`; a song without an artist is its own group `song-<id>`.
+- Group key: `key = " ".join(artist.split()).lower()` (collapses internal whitespace, strips ends). After computing all keys, for each key containing "-", `prefix = key.split("-", 1)[0].strip()`; if prefix is itself one of the keys (an existing group) the key is replaced by prefix, otherwise left unchanged (so "cooper-moore" stays). Collaborations ("&", "and", "+", "with", "feat") are not merged and stay their own groups. A missing or blank artist is its own group `song-<id>`. Artists come from `metadata_2013.csv` / `metadata_2014.csv`.
 - Ratings: static song-level `valence_mean`, `arousal_mean` (1-9). Continuous 2 Hz ratings are out of scope.
 
 ## Counts (filled in after extraction, before go-ahead; audio-only, no ratings involved)
