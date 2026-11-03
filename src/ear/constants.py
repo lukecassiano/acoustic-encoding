@@ -56,3 +56,12 @@ ISO226_AF_SCALE = 4.47e-3  # section 4.1: A_f = 4.47e-3 (10^(0.025 L_N) - 1.15) 
 ISO226_AF_OFFSET = 1.15
 ISO226_AF_FLOOR = 0.4
 ISO226_L_REF = 94.0
+
+# Brainstem cues (spec 6.8)
+CUE_WIN_S = 0.05          # s, ITD/ILD analysis window
+CUE_HOP_S = 0.025         # s, hop between windows
+ITD_MAX_LAG_S = 0.001     # s, cross-correlation lag range (+/-)
+CUE_ENERGY_FLOOR = 1e-12  # floor on window energies / norms (ILD log, correlation denominator)
+SPL_RMS_FLOOR = 1e-12     # floor on RMS before the dB conversion (silence -> 0 dB SPL after the clamp)
+SPL_MIN_DB = 0.0          # dB SPL floor
+RMS_REF = 0.1             # RMS that CAL_DB_AT_RMS_0_1 refers to

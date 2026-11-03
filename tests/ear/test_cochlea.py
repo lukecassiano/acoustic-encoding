@@ -18,10 +18,10 @@ def test_iso226_shape():
 def test_gammatone_peak_and_bandwidth():  # impulse response per channel
     H = np.abs(np.fft.rfft(gammatone(impulse, cf, EAR_SR), axis=1))
     peak = freqs[H.argmax(1)]; assert np.all(np.abs(peak / cf - 1) < 0.05)
-    # 3 dB bandwidth within 15% of 0.887 * 1.019 * ERB(cf) (4th-order gammatone)
+    # 3 dB bandwidth within 15% of 0.887 * ERB(cf) (4th-order gammatone)
     bw = (H >= H.max(1, keepdims=True) / np.sqrt(2)).sum(1) * (freqs[1] - freqs[0])
     erb = 24.7 * (4.37 * cf / 1000 + 1)
-    assert np.all(np.abs(bw / (0.887 * 1.019 * erb) - 1) < 0.15)
+    assert np.all(np.abs(bw / (0.887 * erb) - 1) < 0.15)
 
 
 def test_one_sone_at_40db_1khz():
