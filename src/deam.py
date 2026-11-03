@@ -38,17 +38,21 @@ class FreezeError(Exception):
 
 def _artists() -> dict[int, str]:
     out: dict[int, str] = {}
+    found = False
     for rel in METADATA_REL:
         p = DEAM / rel
         if not p.exists():
             continue
+        found = True
         df = pd.read_csv(p, skipinitialspace=True)
         cols = {c.strip().lower(): c for c in df.columns}
         if "song_id" not in cols or "artist" not in cols:
-            continue
+            raise ValueError(f"{p} needs song_id and artist columns; found {list(df.columns)}")
         for sid, art in zip(df[cols["song_id"]], df[cols["artist"]]):
             if pd.notna(sid) and pd.notna(art) and str(art).strip():
                 out[int(sid)] = str(art).strip()
+    if not found:
+        raise FileNotFoundError(f"no DEAM metadata file found under {DEAM}: {[str(r) for r in METADATA_REL]}")
     return out
 
 

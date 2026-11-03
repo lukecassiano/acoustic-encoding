@@ -68,3 +68,19 @@ def test_ratings_load_with_goahead_on_fixture(tmp_path, monkeypatch):
     r = load_ratings(f)
     assert list(r.columns) == ["song_id", "valence", "arousal"]
     assert list(r.song_id) == [3, 4]
+
+
+def test_excerpts_raises_on_metadata_without_artist_column(tmp_path, monkeypatch):
+    root = layout(tmp_path)
+    pd.DataFrame({"song_id": [3], "title": ["x"]}).to_csv(root / deam.METADATA_REL[0], index=False)
+    monkeypatch.setattr(deam, "DEAM", root)
+    with pytest.raises(ValueError, match="artist"):
+        excerpts()
+
+
+def test_excerpts_raises_when_no_metadata_file(tmp_path, monkeypatch):
+    root = layout(tmp_path)
+    (root / deam.METADATA_REL[0]).unlink()
+    monkeypatch.setattr(deam, "DEAM", root)
+    with pytest.raises(FileNotFoundError):
+        excerpts()
