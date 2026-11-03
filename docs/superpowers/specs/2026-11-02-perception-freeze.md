@@ -1,6 +1,6 @@
 # CAMP perception layer: pre-registration freeze (DRAFT, counts pending)
 
-Date: 2026-11-03 (draft written 2026-11-02 per system date; frozen on go-ahead)
+Date: 2026-11-02 (frozen on go-ahead)
 Spec: `docs/superpowers/specs/2026-11-02-perception-layer-design.md`, commit `70a13b5a411a4ba2c0e4deec38e3d23f10e19df1`
 Branch: `perception-1`. No ratings have been read. `src.deam.load_ratings` refuses until the final line below carries a go-ahead.
 
@@ -18,6 +18,7 @@ Branch: `perception-1`. No ratings have been read. `src.deam.load_ratings` refus
 | Skipped: unreadable | TBD |
 | Skipped: shorter than 9 s | TBD |
 | Skipped: silent | TBD |
+| Skipped: no rating (dropped at merge, counted) | TBD |
 | Groups (artists) | TBD |
 
 ## Decisions
@@ -66,21 +67,31 @@ Theory baseline (`theory_baseline`, no fitted weights beyond a 1-D calibration; 
 - valence score = z(`mode`) + z(`key_clarity`)
 - each score mapped to the rating scale by a least-squares line fit on train, applied to test. Exploratory comparison only (spec 5.5).
 
-## Hypotheses and verdict rules (spec 5.3 and 5.4, verbatim)
+## Hypotheses and verdict rules (spec 5.3 and 5.4, quoted)
 > **H1, the ear front end earns its place.** For arousal, held-out R²(L0 + L1) > R²(L0). Supported if the bootstrap interval of the difference excludes 0. Expected mechanism: perceptual loudness and cochlear modulation energy track arousal better than RMS and the mel spectrum.
 >
 > **H2, a pathway double dissociation.** Within L0 (the feature bands themselves) *and* within L2 (through the cortical projection), the structural pathway predicts valence better than the acoustic pathway does, and the acoustic pathway predicts arousal better than the structural pathway does. Supported per level if both differences hold with intervals excluding 0. Evaluate L2 per listener; the verdict needs ≥ 4 of 5 listeners. This is the link to Analysis A: the acoustic/structural division in auditory cortex would have measurable perceptual consequences.
 >
 > **H3, the cortical projection preserves affect information beyond chance.** See §5.4 for why this is framed against random projections, not against L0.
 
-> CAMP's prediction is a **linear function of L0 features** (delayed copies, then weights). Averaged over a clip, L2 lies essentially inside the span of L0. A linear readout from L2 therefore cannot beat L0 except through its bottleneck acting as a prior. "Cortex beats raw features" is not a meaningful test, and is not run as a hypothesis.
+> - CAMP's prediction is a **linear function of L0 features** (delayed copies, then weights). Averaged over a clip, L2 lies essentially inside the span of L0. A linear readout from L2 therefore cannot beat L0 except through its bottleneck acting as a prior. "Cortex beats raw features" is not a meaningful test, and is not run as a hypothesis.
 >
-> H3 instead asks whether the **brain's** projection keeps more affect information than an **arbitrary** projection of the same dimensionality. Compute held-out R² for L2 (2R dimensions per listener), then repeat with 1,000 random linear projections of the delayed L0 features to 2R dimensions. Projections are built **block-wise**: acoustic columns → R dimensions and structural columns → R dimensions, each matched in column norms to that pathway's block of `w_region`, so the null preserves the two-pathway structure and tests only the brain's weighting within it. Supported if L2's R² exceeds the 95th percentile of the random-projection distribution in ≥ 4 of 5 listeners.
+> - H3 instead asks whether the **brain's** projection keeps more affect information than an **arbitrary** projection of the same dimensionality. Compute held-out R² for L2 (2R dimensions per listener), then repeat with 1,000 random linear projections of the delayed L0 features to 2R dimensions. Projections are built **block-wise**: acoustic columns → R dimensions and structural columns → R dimensions, each matched in column norms to that pathway's block of `w_region`, so the null preserves the two-pathway structure and tests only the brain's weighting within it **(Claude's call)**. Supported if L2's R² exceeds the 95th percentile of the random-projection distribution in ≥ 4 of 5 listeners.
 >
-> H2 at L0 is partly built in by feature choice (the structural band contains `mode`). That is why H2 is tested at both L0 and L2, and why the paper must say that only the L2 version says anything about cortex.
+> - H2 at L0 is partly built in by feature choice (the structural band contains `mode`). That is why H2 is tested at both L0 and L2, and why the paper must say that only the L2 version says anything about cortex.
 >
-> Every L2 result is reported per listener, because the structural pathway ranges from absent (sub-003) to dominant (sub-005). Whether sub-005's cortex carries more valence information than sub-003's is **exploratory**, not a hypothesis.
+> - Every L2 result is reported per listener, because the structural pathway ranges from absent (sub-003) to dominant (sub-005). Whether sub-005's cortex carries more valence information than sub-003's is **exploratory**, not a hypothesis.
 
 Spec 5.6: each hypothesis gets a supported / not-supported / inconclusive verdict; a clean null is a result.
+
+## Aggregation rules (rulings R16 to R20)
+- **R2** = 1 - SS_res/SS_tot, SS_tot about the test-set mean of y. Songs without a rating are dropped and counted (table above).
+- **H1 (arousal)**: `boot_diff(y, pred_L0+L1, pred_L0)` -> `verdict(lo, hi)`.
+- **H2**, per level (L0; L2 per listener): each pathway is its own `fit_readout` with its own CV-chosen alpha (L0: acoustic 61 columns incl. `raw_log_rms` vs structural 8; L2: R vs R columns). Two paired `boot_diff`s, each passed to `verdict()`: valence R2(structural) - R2(acoustic); arousal R2(acoustic) - R2(structural). A level/listener supports H2 iff both are "supported"; fails iff either is "not supported"; otherwise inconclusive. H2-L0 verdict = that level's verdict. H2-L2 overall: "supported" if >= 4 of 5 listeners support, "not supported" if >= 4 of 5 fail, else "inconclusive".
+- **H3**, separately for each rating and each listener: null uses that listener's `W_region` and R; input is the clip-mean design row `xbar` (340 columns), i.e. the spec's "delayed L0 features" after training z-scoring and clip-onset nuisance removal, averaged over TR rows >= 5. `random_projection_r2` is called with `numpy.random.default_rng(SEED)` for each (listener, rating) (`N_PROJ = 1000`). A listener passes if its L2 held-out R2 > `np.percentile(null, 95)`. Per rating: "supported" if >= 4 of 5 listeners pass, "not supported" if >= 4 of 5 fail, else "inconclusive".
+- **Permutation p** (`N_PERM = 5000`, against fixed held-out predictions): descriptive, reported for every model; does not gate H1-H3.
+
+## Environment (.venv)
+python 3.13.14, numpy 2.3.5, scipy 1.15.3, scikit-learn 1.9.1, librosa 1.0.0.
 
 Go-ahead: (Luke writes "Go-ahead: Luke, YYYY-MM-DD" here)
