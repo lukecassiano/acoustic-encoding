@@ -91,6 +91,27 @@ Spec 5.6: each hypothesis gets a supported / not-supported / inconclusive verdic
 - **H3**, separately for each rating and each listener: null uses that listener's `W_region` and R; input is the clip-mean design row `xbar` (340 columns), i.e. the spec's "delayed L0 features" after training z-scoring and clip-onset nuisance removal, averaged over TR rows >= 5. `random_projection_r2` is called with `numpy.random.default_rng(SEED)` for each (listener, rating) (`N_PROJ = 1000`). A listener passes if its L2 held-out R2 > `np.percentile(null, 95)`. Per rating: "supported" if >= 4 of 5 listeners pass, "not supported" if >= 4 of 5 fail, else "inconclusive".
 - **Permutation p** (`N_PERM = 5000`, against fixed held-out predictions): descriptive, reported for every model; does not gate H1-H3.
 
+## H4, generalisation to commercial chart music (PMEmo; Luke approved 2026-11-02, frozen before any rating is read)
+Luke questioned DEAM's ecological validity (all Creative Commons production music). H4 tests whether the DEAM-trained readouts transfer, unchanged, to commercial chart music. PMEmo 2019 (Zhang et al. 2018) is on disk at `data/pmemo/` (`chorus/<musicId>.mp3`, `metadata.csv`, `annotations/`); the archive sha256 is acfcd0e5..., downloaded by Luke from the official Google Drive link.
+- Representations: L0, L1 and L2 are computed for every PMEmo chorus exactly as for DEAM (0 deg, 1 m, "studio", 0 dB; TR rows >= 5; same skip rules).
+- Readouts: the fitted DEAM-training-split models from Task 8 are applied unchanged. No PMEmo data is used for fitting, alpha selection or standardization.
+- Metric: Pearson r between predictions and PMEmo static ratings, per rating, with a 95% CI from 2,000 bootstrap resamples of PMEmo songs (SEED). PMEmo's rating scale differs from DEAM's, so the metric is r, not R2.
+- Primary model: the page readout (L1 + L2), per listener. Per rating, H4 is supported if >= 4 of 5 listeners have CI lo > 0, not supported if >= 4 of 5 have CI hi < 0, and inconclusive otherwise.
+- Descriptive: L0, L0 + L1, L2 alone and the theory baseline.
+- **PMEmo audio is commercial and is never published or served by the website.**
+
+PMEmo inclusion (`src/pmemo.py`): all choruses with an existing `data/pmemo/chorus/<musicId>.mp3`; skip rules identical to DEAM (`levels.process_one`: unreadable; shorter than 9.0 s; silent). Ratings: static song-level `Valence(mean)`, `Arousal(mean)` from `annotations/static_annotations.csv`; choruses without a rating are dropped at merge and counted. Group key follows the DEAM normalization but is unused for fitting. Extraction: `python -m src.perception.levels --dataset pmemo` (cache `data/perception/pmemo_levels/`, aggregate `data/perception/pmemo_levels.npz`, `pmemo_skipped.csv`).
+
+### PMEmo counts (filled in after extraction, before go-ahead; audio-only, no ratings involved)
+| Item | Value |
+|---|---|
+| Choruses found | TBD |
+| Choruses included | TBD |
+| Skipped: unreadable | TBD |
+| Skipped: shorter than 9 s | TBD |
+| Skipped: silent | TBD |
+| Skipped: no rating (dropped at merge, counted) | TBD |
+
 ## Environment (.venv)
 python 3.13.14, numpy 2.3.5, scipy 1.15.3, scikit-learn 1.9.1, librosa 1.0.0.
 

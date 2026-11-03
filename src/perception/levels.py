@@ -21,6 +21,7 @@ from scipy.signal import butter, sosfiltfilt
 
 from src import features as F
 from src.deam import excerpts, load_excerpt
+from src.pmemo import excerpts as pmemo_excerpts
 from src.ear import Source, listen
 from src.ear.constants import FRAME_S, N_CH
 from src.export_web import probe_design
@@ -157,11 +158,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--limit", type=int, default=None, help="only the first N excerpts (testing)")
+    ap.add_argument("--dataset", choices=["deam", "pmemo"], default="deam")
     args = ap.parse_args(argv)
-    df = excerpts()
+    pre = "" if args.dataset == "deam" else "pmemo_"
+    df = (excerpts if args.dataset == "deam" else pmemo_excerpts)()
     if args.limit is not None:
         df = df.head(args.limit)
-    cache = OUT / "levels"
+    cache = OUT / f"{pre}levels"
     cache.mkdir(parents=True, exist_ok=True)
     todo = [(int(r.song_id), r.path, cache) for r in df.itertuples() if not (cache / f"{int(r.song_id)}.npz").exists()
             and not (cache / f"{int(r.song_id)}.skip").exists()]
@@ -183,12 +186,12 @@ def main(argv=None):
         if f.exists():
             z = np.load(f)
             rows.append((int(r.song_id), r.group, z["l0"], z["l1"], z["xbar"]))
-    np.savez(OUT / "levels.npz", song_id=np.array([r[0] for r in rows], dtype=int),
+    np.savez(OUT / f"{pre}levels.npz", song_id=np.array([r[0] for r in rows], dtype=int),
              group=np.array([r[1] for r in rows], dtype=str),
              L0=np.array([r[2] for r in rows]).reshape(len(rows), -1),
              L1=np.array([r[3] for r in rows]).reshape(len(rows), -1),
              xbar=np.array([r[4] for r in rows]).reshape(len(rows), -1))
-    pd.DataFrame(sorted(skipped.items()), columns=["song_id", "reason"]).to_csv(OUT / "skipped.csv", index=False)
+    pd.DataFrame(sorted(skipped.items()), columns=["song_id", "reason"]).to_csv(OUT / f"{pre}skipped.csv", index=False)
     print(f"{len(rows)} excerpts, {len(skipped)} skipped: "
           f"{pd.Series(list(skipped.values())).value_counts().to_dict()}")
 

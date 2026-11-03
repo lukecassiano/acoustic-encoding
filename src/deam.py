@@ -102,11 +102,16 @@ def load_excerpt(path) -> tuple[np.ndarray, np.ndarray]:
             librosa.resample(y, orig_sr=sr, target_sr=44100))
 
 
-def load_ratings(freeze_path: Path) -> pd.DataFrame:
-    """Static song-level valence/arousal. Refuses unless the freeze file has a go-ahead line."""
+def require_goahead(freeze_path) -> None:
+    """Raise FreezeError unless the freeze file carries a signed go-ahead line (shared by DEAM and PMEmo)."""
     text = Path(freeze_path).read_text(encoding="utf-8") if Path(freeze_path).exists() else ""
     if not GOAHEAD.search(text):
         raise FreezeError(f"no 'Go-ahead: Luke, YYYY-MM-DD' line in {freeze_path}; ratings stay sealed")
+
+
+def load_ratings(freeze_path: Path) -> pd.DataFrame:
+    """Static song-level valence/arousal. Refuses unless the freeze file has a go-ahead line."""
+    require_goahead(freeze_path)
     frames = []
     for rel in STATIC_REL:
         df = pd.read_csv(DEAM / rel, skipinitialspace=True)
