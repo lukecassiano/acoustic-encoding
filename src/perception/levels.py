@@ -138,6 +138,10 @@ def _work(args):
         tmp = cache / f"{sid}.tmp.npz"
         np.savez(tmp, **res)
         tmp.replace(cache / f"{sid}.npz")
+    else:
+        tmp = cache / f"{sid}.skip.tmp"
+        tmp.write_text(res, encoding="utf-8")
+        tmp.replace(cache / f"{sid}.skip")
     return sid, status, res if status == "skip" else None
 
 
@@ -159,7 +163,8 @@ def main(argv=None):
         df = df.head(args.limit)
     cache = OUT / "levels"
     cache.mkdir(parents=True, exist_ok=True)
-    todo = [(int(r.song_id), r.path, cache) for r in df.itertuples() if not (cache / f"{int(r.song_id)}.npz").exists()]
+    todo = [(int(r.song_id), r.path, cache) for r in df.itertuples() if not (cache / f"{int(r.song_id)}.npz").exists()
+            and not (cache / f"{int(r.song_id)}.skip").exists()]
     skipped = {}
     if todo:
         if args.workers > 1:
@@ -171,6 +176,9 @@ def main(argv=None):
                 _record(r, skipped, i, len(todo))
     rows = []
     for r in df.itertuples():
+        sk = cache / f"{int(r.song_id)}.skip"
+        if sk.exists():
+            skipped[int(r.song_id)] = sk.read_text(encoding="utf-8")
         f = cache / f"{int(r.song_id)}.npz"
         if f.exists():
             z = np.load(f)
@@ -181,7 +189,7 @@ def main(argv=None):
              L1=np.array([r[3] for r in rows]).reshape(len(rows), -1),
              xbar=np.array([r[4] for r in rows]).reshape(len(rows), -1))
     pd.DataFrame(sorted(skipped.items()), columns=["song_id", "reason"]).to_csv(OUT / "skipped.csv", index=False)
-    print(f"{len(rows)} excerpts, {len(skipped)} skipped this run: "
+    print(f"{len(rows)} excerpts, {len(skipped)} skipped: "
           f"{pd.Series(list(skipped.values())).value_counts().to_dict()}")
 
 

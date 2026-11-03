@@ -109,5 +109,12 @@ def test_cli_end_to_end(tmp_path, monkeypatch):
     assert not np.isnan(z["L0"]).any() and not np.isnan(z["L1"]).any()
     assert pd.read_csv(out / "skipped.csv").to_dict("records") == [{"song_id": 13, "reason": "silent"}]
     mt = (out / "levels" / "10.npz").stat().st_mtime_ns
-    levels.main(["--workers", "1", "--limit", "4"])  # resumable
+    smt = (out / "levels" / "13.skip").stat().st_mtime_ns
+    calls = []
+    monkeypatch.setattr(levels, "process_one", lambda p: calls.append(p) or ("ok", {}))
+    levels.main(["--workers", "1", "--limit", "4"])  # resumable: nothing reprocessed
+    assert calls == []
     assert (out / "levels" / "10.npz").stat().st_mtime_ns == mt
+    assert (out / "levels" / "13.skip").stat().st_mtime_ns == smt
+    assert pd.read_csv(out / "skipped.csv").to_dict("records") == [{"song_id": 13, "reason": "silent"}]
+    assert list(np.load(out / "levels.npz")["song_id"]) == [10, 11, 12]
