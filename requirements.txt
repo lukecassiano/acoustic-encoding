@@ -9,3 +9,5 @@ himalaya
 awscli
 antspyx
 templateflow
+scikit-learn
+pytest
