@@ -51,6 +51,10 @@ def test_export_roundtrip(tmp_path):
         model = readout.fit_readout(X[tr], y, lv["group"][tr])
         for i in tr[:5]:
             assert abs(apply(doc, X[i], rating) - model.predict(X[i:i + 1])[0]) < 1e-5
+    for rating in export.RATINGS:  # held-out rows too
+        for i in te[np.isin(te, rated.index.values)][:5]:
+            assert abs(apply(doc, X[i], rating) - readout.fit_readout(
+                X[tr], rated.loc[tr, rating].to_numpy(), lv["group"][tr]).predict(X[i:i + 1])[0]) < 1e-5
     zb = (X[0][doc["keep"]] - np.array(doc["scaler_mean"])) / np.array(doc["scaler_std"])
     assert np.isfinite(boot[:, 0, :-1] @ zb + boot[:, 0, -1]).all()
 
@@ -66,5 +70,54 @@ def test_bootstrap_row_reproduces_refit():
     idx = np.random.default_rng(0).choice(len(tr), len(tr))
     mb = readout.fit_readout(X[tr][idx], y[idx], lv["group"][tr][idx])
     c, i0 = export._in_main_space(mb, sc.mean_, sc.scale_, keep)
+    z = (X[:, keep] - sc.mean_) / sc.scale_
+    assert np.allclose(z @ c + i0, mb.predict(X), atol=1e-8)
+
+
+def test_export_deterministic_and_train_groups_only(tmp_path, monkeypatch):
+    lv, ratings, bundle, X = fixture(n=60, seed=2)
+    seen = []
+    real = readout.fit_readout
+
+    def spy(Xa, y, g):
+        seen.append(set(np.asarray(g)))
+        return real(Xa, y, g)
+
+    monkeypatch.setattr(readout, "fit_readout", spy)
+    export.export_listener("002", lv, ratings, bundle, tmp_path / "a", n_boot=3)
+    export.export_listener("002", lv, ratings, bundle, tmp_path / "b", n_boot=3)
+    assert (tmp_path / "a" / "readout_boot.f32").read_bytes() == (tmp_path / "b" / "readout_boot.f32").read_bytes()
+    tr, _ = readout.split(lv["group"], readout.SEED)
+    rated = set(ratings.song_id)
+    train_groups = {lv["group"][i] for i in tr if i in rated}
+    assert seen and all(s <= train_groups for s in seen)
+
+
+def test_zero_variance_in_resample_is_dropped():
+    lv, ratings, bundle, X = fixture(n=150, seed=3)
+    tr, _ = readout.split(lv["group"], readout.SEED)
+    tr = np.array([i for i in tr if i != 7])
+    g = lv["group"]
+    ug = np.unique(g[tr])
+    rare = set(ug[:2])  # a rare binary column confined to two training groups
+    L1 = lv["L1"].copy()
+    L1[:, 5] = np.isin(g, list(rare)).astype(float)
+    X = export.page_features(L1, lv["xbar"], bundle)
+    y = ratings.set_index("song_id").loc[tr, "valence"].to_numpy()
+    m = readout.fit_readout(X[tr], y, g[tr])
+    assert m.keep_[5]
+    sc, keep = m.named_steps["scale"], np.flatnonzero(m.keep_)
+    rows_of = {u: np.flatnonzero(g[tr] == u) for u in ug}
+    for seed in range(200):
+        drawn = np.random.default_rng(seed).choice(ug, size=len(ug), replace=True)
+        if not rare & set(drawn):
+            break
+    else:
+        raise AssertionError("no resample drops the rare groups")
+    idx = np.concatenate([rows_of[u] for u in drawn])
+    mb = readout.fit_readout(X[tr][idx], y[idx], g[tr][idx])
+    assert not mb.keep_[5]
+    c, i0 = export._in_main_space(mb, sc.mean_, sc.scale_, keep)
+    assert c[list(keep).index(5)] == 0.0
     z = (X[:, keep] - sc.mean_) / sc.scale_
     assert np.allclose(z @ c + i0, mb.predict(X), atol=1e-8)

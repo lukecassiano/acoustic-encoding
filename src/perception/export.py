@@ -38,6 +38,10 @@ N_BOOT = 200
 CONFIG = dict(azimuth=0, distance=1, preset="studio", gain_db=0)
 
 
+def request_seed(sub):
+    return [readout.SEED, int(sub)]
+
+
 def page_features(L1, xbar, bundle):
     parts = l2(xbar, bundle)
     return np.hstack([L1, parts["acoustic"], parts["structural"]])
@@ -57,7 +61,7 @@ def _in_main_space(model_b, mean, std, keep):
     return coef, icpt
 
 
-def bootstrap(X_tr, Y_tr, g_tr, mean, std, keep, n_boot, seed):
+def bootstrap(X_tr, Y_tr, g_tr, mean, std, keep, n_boot, seed, label=""):
     """(n_boot, 2, n_kept + 1) refits on group-resampled training songs."""
     ug = np.unique(g_tr)
     rows_of = {g: np.flatnonzero(g_tr == g) for g in ug}
@@ -70,6 +74,8 @@ def bootstrap(X_tr, Y_tr, g_tr, mean, std, keep, n_boot, seed):
             m = readout.fit_readout(X_tr[idx], Y_tr[idx, r], g_tr[idx])
             c, i0 = _in_main_space(m, mean, std, keep)
             out[b, r, :-1], out[b, r, -1] = c, i0
+        if (b + 1) % 20 == 0 or b + 1 == n_boot:
+            print(f"sub-{label} bootstrap {b + 1}/{n_boot}", flush=True)
     return out
 
 
@@ -101,21 +107,28 @@ def export_listener(sub, lv, ratings, bundle, out_dir, n_boot=N_BOOT):
         n_train=int(len(tr)), n_test=int(len(te)),
         train_min=X[tr].min(0).tolist(), train_max=X[tr].max(0).tolist(),
         config=CONFIG, n_boot=int(n_boot))
-    boot = bootstrap(X[tr], Y[tr], groups[tr], mean, std, keep, n_boot, [readout.SEED, int(sub)])
+    boot = bootstrap(X[tr], Y[tr], groups[tr], mean, std, keep, n_boot,
+                request_seed(sub), label=sub)
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "readout.json").write_text(json.dumps(doc))
+    (out_dir / "readout.json").write_text(json.dumps(doc, allow_nan=False))
     save(out_dir, "readout_boot.f32", boot.astype("<f4"))
     return doc
 
 
-def main(argv=None):
+def _run_one(sub):
     z = np.load(levels.OUT / "levels.npz")
     lv = {k: z[k] for k in ("song_id", "group", "L1", "xbar")}
-    ratings = load_ratings(FREEZE)
-    for sub in SUBS:
-        doc = export_listener(sub, lv, ratings, load_bundle(sub), levels.WEB / f"sub-{sub}")
-        print(sub, "n_train", doc["n_train"], "n_test", doc["n_test"],
-              {k: round(v["r2"], 3) for k, v in doc["heldout"].items()})
+    print(f"sub-{sub} start", flush=True)
+    doc = export_listener(sub, lv, load_ratings(FREEZE), load_bundle(sub), levels.WEB / f"sub-{sub}")
+    print(f"sub-{sub} done: n_train {doc['n_train']} n_test {doc['n_test']} "
+          f"R2 {({k: round(v['r2'], 3) for k, v in doc['heldout'].items()})}", flush=True)
+
+
+def main(argv=None):
+    """Listeners run in parallel processes; each listener's seeding is independent of scheduling."""
+    from multiprocessing import Pool
+    with Pool(len(SUBS)) as pool:
+        pool.map(_run_one, SUBS)
 
 
 if __name__ == "__main__":
