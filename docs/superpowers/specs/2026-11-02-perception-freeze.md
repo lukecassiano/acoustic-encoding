@@ -118,4 +118,6 @@ python 3.13.14, numpy 2.3.5, scipy 1.15.3, scikit-learn 1.9.1, librosa 1.0.0.
 ## Disclosures
 - 2026-11-02, after H4 was frozen (commit ad7f335): during code review, a reviewer subagent ran `head -c 300` on `data/pmemo/annotations/static_annotations.csv`, which may have displayed up to ~20 rows of PMEmo static ratings. The subagent had no analysis role and its context was discarded; no analysis choice was made or changed afterwards. No DEAM rating has been displayed to anyone. Luke unpacked the DEAM annotations archive but did not open any file.
 
-Go-ahead: (Luke writes "Go-ahead: Luke, YYYY-MM-DD" here)
+- 2026-11-03: Luke gave the go-ahead (in chat; line written by Claude at his instruction) while the PMEmo extraction was still running, so the PMEmo counts table is filled after the go-ahead, contrary to its heading. The counts are mechanical (skip rules and inclusion code frozen in ad7f335) and are taken from audio and the ratings file's ID column only. DEAM counts were filled before the go-ahead (a1e8342).
+
+Go-ahead: Luke, 2026-11-03
