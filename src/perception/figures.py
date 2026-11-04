@@ -79,7 +79,8 @@ def hierarchy(res, out):
                 mid, lo, hi = vals.mean(), vals.min(), vals.max()
                 top = False
                 ax.plot([lo, hi], [y, y], color=BLUE, lw=2, solid_capstyle="butt")
-                ax.plot(vals, [y] * len(vals), "|", color=BLUE, ms=9)
+                off = np.linspace(-0.24, 0.24, len(vals))  # spread listeners vertically so they do not overprint
+                ax.plot(vals, y + off, "o", color=BLUE, ms=3, alpha=0.8, zorder=2)
                 for s, v in zip(m["L2"], vals):  # dagger at the listener's own tick
                     if _top(m["L2"][s][rating]):
                         used = True
@@ -135,7 +136,8 @@ def dissociation(res, out):
                             fontsize=7, color=VERDICT_COLOR.get(v, SECONDARY), va="center")
     axes[0].plot([], [], "o", color=BLUE, label="acoustic")
     axes[0].plot([], [], "o", color=ORANGE, label="structural")
-    axes[0].legend(frameon=False, fontsize=7.5, loc="lower right", labelcolor=SECONDARY)
+    fig.legend(handles=axes[0].get_lines()[-2:], labels=["acoustic", "structural"], frameon=False,
+               fontsize=7.5, loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=2, labelcolor=SECONDARY)
     fig.text(0.5, 1.0, "H2 L0: " + res["verdicts"]["H2_L0"] + "     H2 L2: " + res["verdicts"]["H2_L2"],
              ha="center", fontsize=8, color=SECONDARY)
     fig.subplots_adjust(right=0.86, wspace=0.12)
@@ -164,9 +166,10 @@ def projection_null(res, out):
             ax.tick_params(axis="x", labelsize=7)
         _verdict_text(axes[i, -1], "H3 " + rating + ": " + h3[rating]["verdict"], h3[rating]["verdict"], y=1.25)
     fig.tight_layout()
-    fig.legend(handles=[Line2D([], [], color=BLUE, lw=2, label="L2"),
+    fig.legend(handles=[Line2D([], [], color=BLUE, lw=2, label="L2 passes (at or above null p95)"),
+                        Line2D([], [], color=ORANGE, lw=2, label="L2 fails (below null p95)"),
                         Line2D([], [], color=SECONDARY, lw=1, ls="--", label="null 95th pct")],
-               frameon=False, fontsize=7.5, loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=2,
+               frameon=False, fontsize=7.5, loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=3,
                labelcolor=SECONDARY)
     _save(fig, out, "projection_null")
 
