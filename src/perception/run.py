@@ -22,10 +22,12 @@ PMEmo record ("prec"): {"r", "lo", "hi"} = Pearson r and 2.5/97.5 bootstrap perc
   "meta": {"freeze", "seed", "test_size", "alphas", "n_folds", "n_boot", "n_perm", "n_proj",
            "listeners": ["001",..], "R": {sub: R}, "region_names": {sub: [..]},
            "l0_acoustic_cols": [..61 L0 indices], "l0_structural_cols": [..8 indices]},
-  "data": {"deam":  {"n_levels", "n_rated", "dropped_no_rating", "n_train", "n_test",
+  "data": {"deam":  {"n_levels", "n_rated", "dropped_no_rating" (= dropped_no_rating_row +
+                     dropped_nan_rating), "dropped_no_rating_row", "dropped_nan_rating", "n_train", "n_test",
                      "n_groups" (rated songs), "n_groups_train", "n_groups_test",
                      "train_song_ids": [..], "test_song_ids": [..]},
-           "pmemo": {"n_levels", "n_rated", "dropped_no_rating"}},
+           "pmemo": {"n_levels", "n_rated", "dropped_no_rating", "dropped_no_rating_row",
+                     "dropped_nan_rating"}},
   "models": {                                         # DEAM held-out, descriptive
      "L0" | "L0+L1" | "L0_acoustic" | "L0_structural" | "theory": {"valence": rec, "arousal": rec},
      "L2" | "L2_acoustic" | "L2_structural" | "page":  {sub: {"valence": rec, "arousal": rec}}},
@@ -72,28 +74,43 @@ assert len(L0_ACOUSTIC) == 61 and len(L0_STRUCTURAL) == 8
 
 # ------------------------------------------------------------------ data and features
 
-def load_levels(path, ratings):
-    """All songs of a levels file (levels order kept) plus ratings by song_id; `rated` marks songs
-    with a rating (unrated songs carry NaN and are dropped by the caller, and counted)."""
-    z = np.load(path)
-    sid = z["song_id"].astype(int)
+def merge_ratings(song_id, ratings):
+    """Ratings aligned to song_id (the one definition shared with Task 10, export.py).
+
+    Returns {"valence", "arousal": (n,) float, NaN where unrated; "rated": (n,) bool;
+    "dropped_no_rating_row", "dropped_nan_rating", "dropped_no_rating" (their sum)}.
+    """
+    sid = np.asarray(song_id).astype(int)
     rt = ratings.drop_duplicates("song_id").set_index("song_id")
     has = np.isin(sid, rt.index.values)
-    out = dict(song_id=sid, group=z["group"].astype(str), L0=z["L0"].astype(float),
-               L1=z["L1"].astype(float), xbar=z["xbar"].astype(float), n_levels=int(len(sid)))
+    out = {}
     for k in RATINGS:
         out[k] = np.full(len(sid), np.nan)
         out[k][has] = rt.loc[sid[has], k].to_numpy(float)
     # FREEZE-AMBIGUITY: a rating row with a missing (NaN) valence or arousal is treated as
     # "without a rating" (dropped at merge, counted) rather than dropped per rating.
     out["rated"] = has & np.isfinite(out["valence"]) & np.isfinite(out["arousal"])
-    out["dropped_no_rating"] = int((~out["rated"]).sum())
+    out["dropped_no_rating_row"] = int((~has).sum())
+    out["dropped_nan_rating"] = int((has & ~out["rated"]).sum())
+    out["dropped_no_rating"] = out["dropped_no_rating_row"] + out["dropped_nan_rating"]
     return out
 
 
-def subset(lv, mask):
+def load_levels(path, ratings):
+    """All songs of a levels file (levels order kept) merged with ratings (merge_ratings); unrated
+    songs carry NaN and are dropped by the caller."""
+    z = np.load(path)
+    out = dict(song_id=z["song_id"].astype(int), group=z["group"].astype(str), L0=z["L0"].astype(float),
+               L1=z["L1"].astype(float), xbar=z["xbar"].astype(float), n_levels=int(len(z["song_id"])))
+    out.update(merge_ratings(out["song_id"], ratings))
+    return out
+
+
+def rated_only(lv):
+    """The rated songs of load_levels output (the `rated` mask is consumed)."""
     keys = ("song_id", "group", "L0", "L1", "xbar") + RATINGS
-    return {**lv, **{k: lv[k][mask] for k in keys}}
+    m = lv["rated"]
+    return {**{k: v for k, v in lv.items() if k != "rated"}, **{k: lv[k][m] for k in keys}}
 
 
 def l2_features(xbar, bundle):
@@ -119,35 +136,33 @@ def deam_split(groups, rated):
 
 # ------------------------------------------------------------------ statistics helpers
 
-def boot_r2(y, pred, n=N_BOOT, seed=SEED):
-    """Descriptive 95% interval of a single model's held-out R2: N_BOOT resamples of test songs."""
-    # FREEZE-AMBIGUITY: the freeze bootstraps only R2 differences; per-model R2 intervals are
-    # needed by the Task 9 hierarchy figure. Same resampling as boot_diff (default_rng(seed),
-    # resample test songs with replacement, 2.5/97.5 percentiles). Descriptive; gates nothing.
+def _boot_ci(stat, y, pred, n, seed):
+    """2.5/97.5 percentiles of stat(y[idx], pred[idx]) over n resamples of songs, default_rng(seed)."""
     y, pred = np.asarray(y, float), np.asarray(pred, float)
     rng = np.random.default_rng(seed)
     m = len(y)
     v = np.empty(n)
     for i in range(n):
         idx = rng.integers(0, m, m)
-        v[i] = _r2(y[idx], pred[idx])
+        v[i] = stat(y[idx], pred[idx])
     lo, hi = np.percentile(v, [2.5, 97.5])
     return float(lo), float(hi)
+
+
+def boot_r2(y, pred, n=N_BOOT, seed=SEED):
+    """Descriptive 95% interval of a single model's held-out R2: N_BOOT resamples of test songs."""
+    # FREEZE-AMBIGUITY: the freeze bootstraps only R2 differences; per-model R2 intervals are
+    # needed by the Task 9 hierarchy figure. Same resampling as boot_diff (default_rng(seed),
+    # resample test songs with replacement, 2.5/97.5 percentiles). Descriptive; gates nothing.
+    return _boot_ci(_r2, y, pred, n, seed)
 
 
 def boot_r(y, pred, n=N_BOOT, seed=SEED):
     """H4 metric: Pearson r with a 95% CI from n bootstrap resamples of songs (default_rng(seed))."""
     # FREEZE-AMBIGUITY: "(SEED)" read as a fresh default_rng(SEED) for every (model, listener,
     # rating) interval, the same convention as boot_diff and random_projection_r2 (R17).
-    y, pred = np.asarray(y, float), np.asarray(pred, float)
-    rng = np.random.default_rng(seed)
-    m = len(y)
-    v = np.empty(n)
-    for i in range(n):
-        idx = rng.integers(0, m, m)
-        v[i] = _corr(y[idx], pred[idx])
-    lo, hi = np.percentile(v, [2.5, 97.5])
-    return dict(r=_corr(y, pred), lo=float(lo), hi=float(hi))
+    lo, hi = _boot_ci(_corr, y, pred, n, seed)
+    return dict(r=_corr(np.asarray(y, float), np.asarray(pred, float)), lo=lo, hi=hi)
 
 
 def _record(y_te, pred, n_boot, n_perm, model=None, dims=None):
@@ -205,10 +220,15 @@ def run(freeze_path, n_boot=N_BOOT, n_perm=N_PERM, n_proj=N_PROJ, workers=1,
     pmemo_path = Path(pmemo_path or OUT / "pmemo_levels.npz")
     out_dir = Path(out_dir or OUT)
 
-    # ratings first: both refuse without the go-ahead line
+    # inputs must exist before any rating is read
+    if not levels_path.exists():
+        raise FileNotFoundError(f"{levels_path} missing; run `python -m src.perception.levels` first")
+    if not pmemo_path.exists():
+        raise FileNotFoundError(f"{pmemo_path} missing; run `python -m src.perception.levels --dataset pmemo` "
+                                "first (H4 is pre-registered; the run needs both datasets)")
+    # ratings: both loaders refuse without the go-ahead line
     D = load_levels(levels_path, deam.load_ratings(freeze_path))
-    P = load_levels(pmemo_path, pmemo.load_ratings(freeze_path))
-    P = subset(P, P["rated"])
+    P = rated_only(load_levels(pmemo_path, pmemo.load_ratings(freeze_path)))
 
     # tr / te index the full DEAM arrays (unrated songs are in neither)
     tr, te = deam_split(D["group"], D["rated"])
@@ -216,13 +236,13 @@ def run(freeze_path, n_boot=N_BOOT, n_perm=N_PERM, n_proj=N_PROJ, workers=1,
     Y = {k: (D[k][tr], D[k][te]) for k in RATINGS}
     bundles = {s: load_bundle(s) for s in SUBS}
 
-    models, pmodels, preds, fitted = {}, {}, {}, {}
+    models, pmodels, preds = {}, {}, {}
 
     def flat(name, Xall, Xp):
         models[name], pmodels[name] = {}, {}
         for k in RATINGS:
             m, pred, rec = _fit(Xall[tr], Xall[te], *Y[k], gtr, n_boot, n_perm)
-            models[name][k], preds[(name, None, k)], fitted[(name, None, k)] = rec, pred, m
+            models[name][k], preds[(name, None, k)] = rec, pred
             if Xp is not None:
                 pmodels[name][k] = boot_r(P[k], m.predict(Xp), n=n_boot)
         if Xp is None:
@@ -316,13 +336,17 @@ def run(freeze_path, n_boot=N_BOOT, n_perm=N_PERM, n_proj=N_PROJ, workers=1,
                   region_names={s: list(bundles[s]["region_names"]) for s in SUBS},
                   l0_acoustic_cols=L0_ACOUSTIC, l0_structural_cols=L0_STRUCTURAL),
         data=dict(deam=dict(n_levels=D["n_levels"], n_rated=int(D["rated"].sum()),
-                            dropped_no_rating=D["dropped_no_rating"], n_train=int(len(tr)), n_test=int(len(te)),
+                            dropped_no_rating=D["dropped_no_rating"],
+                            dropped_no_rating_row=D["dropped_no_rating_row"],
+                            dropped_nan_rating=D["dropped_nan_rating"], n_train=int(len(tr)), n_test=int(len(te)),
                             n_groups=int(len(set(D["group"][D["rated"]]))), n_groups_train=int(len(set(gtr))),
                             n_groups_test=int(len(set(D["group"][te]))),
                             train_song_ids=[int(v) for v in D["song_id"][tr]],
                             test_song_ids=[int(v) for v in D["song_id"][te]]),
                   pmemo=dict(n_levels=P["n_levels"], n_rated=int(len(P["song_id"])),
-                             dropped_no_rating=P["dropped_no_rating"])),
+                             dropped_no_rating=P["dropped_no_rating"],
+                             dropped_no_rating_row=P["dropped_no_rating_row"],
+                             dropped_nan_rating=P["dropped_nan_rating"])),
         models=models,
         hypotheses=dict(H1=h1, H2=h2, H3=h3, H4=h4),
         pmemo_models=pmodels,
@@ -331,12 +355,23 @@ def run(freeze_path, n_boot=N_BOOT, n_perm=N_PERM, n_proj=N_PROJ, workers=1,
                       H4_valence=h4["valence"]["verdict"], H4_arousal=h4["arousal"]["verdict"]),
     )
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "results.json").write_text(json.dumps(res, indent=1), encoding="utf-8")
+    (out_dir / "results.json").write_text(json.dumps(res, indent=1, allow_nan=False), encoding="utf-8")
     (out_dir / "results.md").write_text(to_markdown(res), encoding="utf-8")
     return res
 
 
 # ------------------------------------------------------------------ results.md
+
+EDGE, WEAK = "†edge", "‡"
+WEAK_DIFF = 0.01  # descriptive annotation threshold for "‡" (results.md only; gates nothing)
+FOOTNOTES = [
+    f"{EDGE}: the CV-chosen ridge alpha sits at an end of the frozen grid ALPHAS (first or last value).",
+    f"{WEAK}: a \"supported\" outcome, or a listener counted toward one, where the winning model's held-out "
+    f"R2 <= 0 or the |difference| < {WEAK_DIFF} (H3: difference = L2 R2 - null p95; H4: winning model = the "
+    "listener's page readout, DEAM held-out R2).",
+    "Markers are descriptive annotations; every verdict follows the freeze unchanged.",
+]
+
 
 def _f(v, d=3):
     return "n/a" if v is None else f"{v:.{d}f}"
@@ -346,56 +381,128 @@ def _ci(lo, hi):
     return f"[{lo:.3f}, {hi:.3f}]"
 
 
+def _rec(res, name, sub, k):
+    m = res["models"][name]
+    return m[k] if sub is None else m[sub][k]
+
+
+def _is_edge(rec, alphas):
+    a = rec.get("alpha")
+    return a is not None and bool(np.isclose(a, alphas[0]) or np.isclose(a, alphas[-1]))
+
+
+def _alpha(rec, alphas):
+    a = rec.get("alpha")
+    if a is None:
+        return "n/a"
+    return f"{a:.4g}" + (f" {EDGE}" if _is_edge(rec, alphas) else "")
+
+
+def _weak(r2_win, diff):
+    return r2_win <= 0 or abs(diff) < WEAK_DIFF
+
+
 def to_markdown(res):
+    alphas = res["meta"]["alphas"]
+    H = res["hypotheses"]
+    notes = {k: set() for k in res["verdicts"]}  # verdict key -> markers
+
+    # --- H1
+    h1 = H["H1"]
+    ra, rb = _rec(res, h1["a"], None, "arousal"), _rec(res, h1["b"], None, "arousal")
+    w = h1["verdict"] == "supported" and _weak(ra["r2"], h1["diff"])
+    notes["H1"] |= ({WEAK} if w else set()) | ({EDGE} if _is_edge(ra, alphas) or _is_edge(rb, alphas) else set())
+    S_h1 = ["## H1 (arousal): R2(L0+L1) - R2(L0)", "",
+            "| a | b | R2(a) | R2(b) | alpha(a) | alpha(b) | diff | 95% CI | verdict |",
+            "|---|---|---|---|---|---|---|---|---|",
+            f"| {h1['a']} | {h1['b']} | {_f(ra['r2'])} | {_f(rb['r2'])} | {_alpha(ra, alphas)} | {_alpha(rb, alphas)} "
+            f"| {_f(h1['diff'])} | {_ci(h1['lo'], h1['hi'])} | {h1['verdict']}{' ' + WEAK if w else ''} |", ""]
+
+    # --- H2
+    S_h2 = ["## H2: pathway double dissociation", "",
+            "Valence: R2(structural) - R2(acoustic); arousal: R2(acoustic) - R2(structural).", "",
+            "| Level | Listener | Rating | a | b | R2(a) | R2(b) | alpha(a) | alpha(b) | diff | 95% CI | verdict "
+            "| level/listener verdict |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+
+    def h2rows(level, sub, x, key):
+        out = []
+        for k in RATINGS:
+            d = x[k]
+            ma = _rec(res, f"{level}_{d['a']}", sub, k)
+            mb = _rec(res, f"{level}_{d['b']}", sub, k)
+            w = d["verdict"] == "supported" and _weak(ma["r2"], d["diff"])
+            if w and x["verdict"] == "supported":
+                notes[key].add(WEAK)
+            if _is_edge(ma, alphas) or _is_edge(mb, alphas):
+                notes[key].add(EDGE)
+            out.append(f"| {level} | {sub or '-'} | {k} | {d['a']} | {d['b']} | {_f(ma['r2'])} | {_f(mb['r2'])} "
+                       f"| {_alpha(ma, alphas)} | {_alpha(mb, alphas)} | {_f(d['diff'])} | {_ci(d['lo'], d['hi'])} "
+                       f"| {d['verdict']}{' ' + WEAK if w else ''} | {x['verdict']} |")
+        return out
+
+    S_h2 += h2rows("L0", None, H["H2"]["L0"], "H2_L0")
+    for s, x in H["H2"]["L2"]["listeners"].items():
+        S_h2 += h2rows("L2", s, x, "H2_L2")
+    h2l2 = H["H2"]["L2"]
+    S_h2 += ["", f"H2-L0: {H['H2']['L0']['verdict']}. H2-L2: {h2l2['n_support']} of 5 support, "
+                 f"{h2l2['n_fail']} of 5 fail -> {h2l2['verdict']}.", ""]
+
+    # --- H3
+    S_h3 = ["## H3: L2 vs random block-wise projections", "",
+            "| Rating | Listener | L2 R2 | alpha | null p50 | null p95 | pass |", "|---|---|---|---|---|---|---|"]
+    for k, x in H["H3"].items():
+        key = f"H3_{k}"
+        for s, v in x["listeners"].items():
+            m = _rec(res, "L2", s, k)
+            w = v["pass"] and _weak(v["r2"], v["r2"] - v["null_p95"])
+            if w and x["verdict"] == "supported":
+                notes[key].add(WEAK)
+            if _is_edge(m, alphas):
+                notes[key].add(EDGE)
+            S_h3.append(f"| {k} | {s} | {_f(v['r2'])} | {_alpha(m, alphas)} | {_f(v['null_p50'])} | {_f(v['null_p95'])} "
+                        f"| {'yes' if v['pass'] else 'no'}{' ' + WEAK if w else ''} |")
+    S_h3 += [""] + [f"H3-{k}: {x['n_pass']} of 5 pass -> {x['verdict']}." for k, x in H["H3"].items()] + [""]
+
+    # --- H4
+    S_h4 = ["## H4: DEAM-trained page readout on PMEmo (Pearson r)", "",
+            "| Rating | Listener | PMEmo r | 95% CI | CI lo > 0 | DEAM R2 (page) | alpha |", "|---|---|---|---|---|---|---|"]
+    for k, x in H["H4"].items():
+        key = f"H4_{k}"
+        for s, v in x["listeners"].items():
+            m = _rec(res, "page", s, k)
+            pos = v["lo"] > 0
+            w = pos and m["r2"] <= 0
+            if w and x["verdict"] == "supported":
+                notes[key].add(WEAK)
+            if _is_edge(m, alphas):
+                notes[key].add(EDGE)
+            S_h4.append(f"| {k} | {s} | {_f(v['r'])} | {_ci(v['lo'], v['hi'])} | {'yes' if pos else 'no'}"
+                        f"{' ' + WEAK if w else ''} | {_f(m['r2'])} | {_alpha(m, alphas)} |")
+    S_h4 += [""] + [f"H4-{k}: {x['n_lo_pos']} of 5 with CI lo > 0, {x['n_hi_neg']} of 5 with CI hi < 0 -> {x['verdict']}."
+                    for k, x in H["H4"].items()] + [""]
+
+    # --- header, data, verdicts
     L = ["# Perception layer: pre-registered results", "",
          f"Freeze: `{res['meta']['freeze']}`. Seed {res['meta']['seed']}; n_boot {res['meta']['n_boot']}, "
          f"n_perm {res['meta']['n_perm']}, n_proj {res['meta']['n_proj']}.", ""]
     dd, pd_ = res["data"]["deam"], res["data"]["pmemo"]
-    L += ["## Data", "", "| Dataset | In levels file | Rated | Dropped: no rating | Train | Test | Groups (train/test) |",
-          "|---|---|---|---|---|---|---|",
-          f"| DEAM | {dd['n_levels']} | {dd['n_rated']} | {dd['dropped_no_rating']} | {dd['n_train']} | {dd['n_test']} "
-          f"| {dd['n_groups']} ({dd['n_groups_train']}/{dd['n_groups_test']}) |",
-          f"| PMEmo | {pd_['n_levels']} | {pd_['n_rated']} | {pd_['dropped_no_rating']} | 0 | {pd_['n_rated']} | n/a |", ""]
-    L += ["## Verdicts", "", "| Hypothesis | Verdict |", "|---|---|"]
-    L += [f"| {k} | {v} |" for k, v in res["verdicts"].items()] + [""]
+    L += ["## Data", "",
+          "| Dataset | In levels file | Rated | Dropped: no rating row | Dropped: NaN rating | Train | Test "
+          "| Groups (train/test) |",
+          "|---|---|---|---|---|---|---|---|",
+          f"| DEAM | {dd['n_levels']} | {dd['n_rated']} | {dd['dropped_no_rating_row']} | {dd['dropped_nan_rating']} "
+          f"| {dd['n_train']} | {dd['n_test']} | {dd['n_groups']} ({dd['n_groups_train']}/{dd['n_groups_test']}) |",
+          f"| PMEmo | {pd_['n_levels']} | {pd_['n_rated']} | {pd_['dropped_no_rating_row']} | {pd_['dropped_nan_rating']} "
+          f"| 0 | {pd_['n_rated']} | n/a |", ""]
+    L += ["## Verdicts", "", "| Hypothesis | Verdict | Markers |", "|---|---|---|"]
+    order = [WEAK, EDGE]
+    L += [f"| {k} | {v} | {' '.join(m for m in order if m in notes[k] and (m != WEAK or v == 'supported'))} |"
+          for k, v in res["verdicts"].items()]
+    L += [""] + [f"- {f}" for f in FOOTNOTES] + [""]
+    L += S_h1 + S_h2 + S_h3 + S_h4
 
-    H = res["hypotheses"]
-    h1 = H["H1"]
-    L += ["## H1 (arousal): R2(L0+L1) - R2(L0)", "", "| diff | 95% CI | verdict |", "|---|---|---|",
-          f"| {_f(h1['diff'])} | {_ci(h1['lo'], h1['hi'])} | {h1['verdict']} |", ""]
-
-    L += ["## H2: pathway double dissociation", "",
-          "Valence: R2(structural) - R2(acoustic); arousal: R2(acoustic) - R2(structural).", "",
-          "| Level | Listener | valence diff [CI] | valence | arousal diff [CI] | arousal | verdict |",
-          "|---|---|---|---|---|---|---|"]
-
-    def h2row(level, sub, x):
-        v, a = x["valence"], x["arousal"]
-        return (f"| {level} | {sub} | {_f(v['diff'])} {_ci(v['lo'], v['hi'])} | {v['verdict']} "
-                f"| {_f(a['diff'])} {_ci(a['lo'], a['hi'])} | {a['verdict']} | {x['verdict']} |")
-    L.append(h2row("L0", "-", H["H2"]["L0"]))
-    for s, x in H["H2"]["L2"]["listeners"].items():
-        L.append(h2row("L2", s, x))
-    h2l2 = H["H2"]["L2"]
-    L += ["", f"H2-L0: {H['H2']['L0']['verdict']}. H2-L2: {h2l2['n_support']} of 5 support, "
-              f"{h2l2['n_fail']} of 5 fail -> {h2l2['verdict']}.", ""]
-
-    L += ["## H3: L2 vs random block-wise projections", "",
-          "| Rating | Listener | L2 R2 | null p5 | null p50 | null p95 | pass |", "|---|---|---|---|---|---|---|"]
-    for k, x in H["H3"].items():
-        for s, v in x["listeners"].items():
-            L.append(f"| {k} | {s} | {_f(v['r2'])} | {_f(v['null_p5'])} | {_f(v['null_p50'])} | {_f(v['null_p95'])} "
-                     f"| {'yes' if v['pass'] else 'no'} |")
-    L += [""] + [f"H3-{k}: {x['n_pass']} of 5 pass -> {x['verdict']}." for k, x in H["H3"].items()] + [""]
-
-    L += ["## H4: DEAM-trained page readout on PMEmo (Pearson r)", "",
-          "| Rating | Listener | r | 95% CI |", "|---|---|---|---|"]
-    for k, x in H["H4"].items():
-        for s, v in x["listeners"].items():
-            L.append(f"| {k} | {s} | {_f(v['r'])} | {_ci(v['lo'], v['hi'])} |")
-    L += [""] + [f"H4-{k}: {x['n_lo_pos']} of 5 with CI lo > 0, {x['n_hi_neg']} of 5 with CI hi < 0 -> {x['verdict']}."
-                 for k, x in H["H4"].items()] + [""]
-
+    # --- descriptive
     L += ["## Descriptive: DEAM held-out models", "",
           "Per-listener rows are reported per listener; differences between listeners are exploratory.", "",
           "| Model | Listener | Rating | dims | R2 | 95% CI | r | perm p | alpha |", "|---|---|---|---|---|---|---|---|---|"]
@@ -405,7 +512,7 @@ def to_markdown(res):
             for k in RATINGS:
                 r = recs[k]
                 L.append(f"| {name} | {s} | {k} | {r['dims']} | {_f(r['r2'])} | {_ci(r['r2_lo'], r['r2_hi'])} "
-                         f"| {_f(r['r'])} | {_f(r['perm_p'], 4)} | {_f(r['alpha'], 4) if r['alpha'] is not None else 'n/a'} |")
+                         f"| {_f(r['r'])} | {_f(r['perm_p'], 4)} | {_alpha(r, alphas)} |")
     L += ["", "## Descriptive: DEAM-trained models on PMEmo (Pearson r)", "",
           "| Model | Listener | Rating | r | 95% CI |", "|---|---|---|---|---|"]
     for name, x in res["pmemo_models"].items():
@@ -414,6 +521,7 @@ def to_markdown(res):
             for k in RATINGS:
                 r = recs[k]
                 L.append(f"| {name} | {s} | {k} | {_f(r['r'])} | {_ci(r['lo'], r['hi'])} |")
+    L += ["", "Markers:"] + [f"- {f}" for f in FOOTNOTES]
     return "\n".join(L) + "\n"
 
 

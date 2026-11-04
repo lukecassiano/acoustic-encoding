@@ -4,7 +4,8 @@ Per listener (sub-001..005) writes data/web/sub-XXX/readout.json, readout_boot.f
 
 Page features, in this order (matching readout.json "groups"):
     x = [L1 (66, "ear") | L2 acoustic (R) | L2 structural (R)]      no L0 (spec 7.3, option c)
-Split: readout.split(DEAM groups from levels.npz, SEED), then songs without a rating are dropped.
+Split and rated mask: src.perception.run.deam_split / merge_ratings (one shared definition with the
+Task 8 run): readout.split(DEAM groups from levels.npz, SEED), then songs without a rating are dropped.
 
 Coefficient-space convention (the page applies it exactly as written):
     xk = x[keep]                              keep = int indices of non-constant training columns
@@ -30,21 +31,16 @@ from src import features as F
 from src.deam import load_ratings
 from src.export_web import save
 from src.perception import levels, readout
-from src.perception.levels import L1_NAMES, SUBS, l2, load_bundle
+from src.perception.levels import L1_NAMES, SUBS, load_bundle
+from src.perception.run import RATINGS, deam_split, merge_ratings, page_features
 
 FREEZE = F.DATA.parent / "docs" / "superpowers" / "specs" / "2026-11-02-perception-freeze.md"
-RATINGS = ("valence", "arousal")
 N_BOOT = 200
 CONFIG = dict(azimuth=0, distance=1, preset="studio", gain_db=0)
 
 
 def request_seed(sub):
     return [readout.SEED, int(sub)]
-
-
-def page_features(L1, xbar, bundle):
-    parts = l2(xbar, bundle)
-    return np.hstack([L1, parts["acoustic"], parts["structural"]])
 
 
 def _in_main_space(model_b, mean, std, keep):
@@ -83,13 +79,10 @@ def export_listener(sub, lv, ratings, bundle, out_dir, n_boot=N_BOOT):
     """lv: dict-like with song_id, group, L1, xbar. ratings: DataFrame(song_id, valence, arousal)."""
     sid = np.asarray(lv["song_id"])
     groups = np.asarray(lv["group"])
-    tr, te = readout.split(groups, readout.SEED)
+    merged = merge_ratings(sid, ratings)
+    tr, te = deam_split(groups, merged["rated"])
     X = page_features(np.asarray(lv["L1"], float), np.asarray(lv["xbar"], float), bundle)
-    rt = ratings.drop_duplicates("song_id").set_index("song_id")
-    has = np.isin(sid, rt.index.values)
-    tr, te = tr[has[tr]], te[has[te]]
-    Y = np.full((len(sid), 2), np.nan)
-    Y[has] = rt.loc[sid[has], list(RATINGS)].to_numpy(float)
+    Y = np.column_stack([merged[k] for k in RATINGS])
     models = [readout.fit_readout(X[tr], Y[tr, r], groups[tr]) for r in range(2)]
     keep = np.flatnonzero(models[0].keep_)  # variance mask depends on X_train only
     sc = models[0].named_steps["scale"]

@@ -40,9 +40,10 @@ def _planted(L0, L1, rng):
 @pytest.fixture
 def fixture(tmp_path, monkeypatch):
     rng = np.random.default_rng(42)
-    # DEAM: 120 songs in the levels file, 2 of them without a rating
+    # DEAM: 120 songs in the levels file, 2 without a rating row, 1 with a NaN valence
     sid, L0, L1 = _levels(tmp_path / "levels.npz", 120, 40, 1, 2)
     v, a = _planted(L0, L1, rng)
+    v[2] = np.nan
     d = tmp_path / "deam"
     f = d / deam.STATIC_REL[0]
     f.parent.mkdir(parents=True)
@@ -89,15 +90,17 @@ def test_run_end_to_end_on_fixture(fixture):
     walk(res)
     # counts, split and shapes
     dd, pd_ = res["data"]["deam"], res["data"]["pmemo"]
-    assert dd["dropped_no_rating"] == 2 and dd["n_rated"] == 118 and dd["n_train"] + dd["n_test"] == 118
+    assert dd["dropped_no_rating_row"] == 2 and dd["dropped_nan_rating"] == 1 and dd["dropped_no_rating"] == 3
+    assert dd["n_rated"] == 117 and dd["n_train"] + dd["n_test"] == 117
     assert not set(dd["train_song_ids"]) & set(dd["test_song_ids"])
     # same split order as Task 10 (export.py): split ALL songs in levels.npz, then drop unrated
     z = np.load(tmp / "levels.npz")
     tr, te = split(z["group"], SEED)
-    rated = np.isin(z["song_id"], z["song_id"][2:])
+    rated = np.isin(z["song_id"], z["song_id"][3:])
     assert dd["train_song_ids"] == [int(v) for v in z["song_id"][tr[rated[tr]]]]
     assert dd["test_song_ids"] == [int(v) for v in z["song_id"][te[rated[te]]]]
-    assert pd_["dropped_no_rating"] == 1 and pd_["n_rated"] == 49
+    assert pd_["dropped_no_rating"] == 1 and pd_["dropped_no_rating_row"] == 1 and pd_["dropped_nan_rating"] == 0
+    assert pd_["n_rated"] == 49
     assert res["models"]["L0_acoustic"]["valence"]["dims"] == 61
     assert res["models"]["L0_structural"]["valence"]["dims"] == 8
     for s in SUBS:
@@ -108,11 +111,114 @@ def test_run_end_to_end_on_fixture(fixture):
     # H4: planted L1 -> arousal transfers to the synthetic PMEmo set through the page readout
     assert res["verdicts"]["H4_arousal"] == "supported"
     assert set(res["pmemo_models"]) == {"L0", "L0+L1", "theory", "L2", "page"}
-    # outputs on disk; json round-trips
-    on_disk = json.loads((tmp / "out" / "results.json").read_text(encoding="utf-8"))
+    _assert_consistent(res)
+    # outputs on disk; strict json (no NaN / Infinity) round-trips
+    def no_const(c):
+        raise ValueError(f"non-finite constant {c} in results.json")
+    on_disk = json.loads((tmp / "out" / "results.json").read_text(encoding="utf-8"), parse_constant=no_const)
     assert on_disk["verdicts"] == res["verdicts"]
     md = (tmp / "out" / "results.md").read_text(encoding="utf-8")
     assert "## Verdicts" in md and "| H1 | supported |" in md
+    assert "R2(a) | R2(b) | alpha(a) | alpha(b)" in md and "DEAM R2 (page)" in md
+
+
+def _assert_consistent(res):
+    """Cross-checks between the hypothesis blocks and the model records they are built from."""
+    M, H = res["models"], res["hypotheses"]
+    eq = lambda a, b: a == pytest.approx(b, abs=1e-12)  # noqa: E731
+    h1 = H["H1"]
+    assert eq(h1["diff"], M["L0+L1"]["arousal"]["r2"] - M["L0"]["arousal"]["r2"])
+    def h2(x, get):
+        assert eq(x["valence"]["diff"], get("structural", "valence") - get("acoustic", "valence"))
+        assert eq(x["arousal"]["diff"], get("acoustic", "arousal") - get("structural", "arousal"))
+        assert x["verdict"] == R.h2_combine(x["valence"]["verdict"], x["arousal"]["verdict"])
+    h2(H["H2"]["L0"], lambda p, k: M[f"L0_{p}"][k]["r2"])
+    for s, x in H["H2"]["L2"]["listeners"].items():
+        h2(x, lambda p, k, s=s: M[f"L2_{p}"][s][k]["r2"])
+    for k, x in H["H3"].items():
+        for s, v in x["listeners"].items():
+            assert v["r2"] == M["L2"][s][k]["r2"]
+            assert v["null_p95"] == float(np.percentile(v["null"], 95))
+            assert v["pass"] == (v["r2"] > v["null_p95"])
+        assert x["n_pass"] == sum(v["pass"] for v in x["listeners"].values())
+    for k, x in H["H4"].items():
+        for s, v in x["listeners"].items():
+            assert v == res["pmemo_models"]["page"][s][k]
+        assert x["n_lo_pos"] == sum(v["lo"] > 0 for v in x["listeners"].values())
+        assert x["n_hi_neg"] == sum(v["hi"] < 0 for v in x["listeners"].values())
+
+
+def test_pmemo_isolation(fixture):
+    """Perturbing PMEmo levels and ratings changes nothing fitted or scored on DEAM."""
+    tmp, freeze = fixture
+    base = _run(tmp, freeze)
+    rng = np.random.default_rng(9)
+    z = dict(np.load(tmp / "pmemo_levels.npz"))
+    for k in ("L0", "L1", "xbar"):
+        z[k] = z[k] + rng.standard_normal(z[k].shape)
+    np.savez(tmp / "pmemo_levels.npz", **z)
+    pf = pmemo.PMEMO / pmemo.STATIC_REL
+    df = pd.read_csv(pf)
+    df[["Arousal(mean)", "Valence(mean)"]] = rng.standard_normal((len(df), 2))
+    df.to_csv(pf, index=False)
+    pert = _run(tmp, freeze)
+    assert pert["pmemo_models"] != base["pmemo_models"]  # the perturbation took effect
+    assert pert["models"] == base["models"]
+    assert pert["data"]["deam"] == base["data"]["deam"]
+    for h in ("H1", "H2", "H3"):
+        assert pert["hypotheses"][h] == base["hypotheses"][h]
+
+
+def test_inputs_checked_before_ratings(fixture):
+    tmp, freeze = fixture
+    freeze.write_text("# unsigned: a ratings read would raise FreezeError\n", encoding="utf-8")
+    with pytest.raises(FileNotFoundError, match="--dataset pmemo"):
+        R.run(freeze, levels_path=tmp / "levels.npz", pmemo_path=tmp / "missing.npz", out_dir=tmp / "out")
+
+
+def test_merge_ratings_counts():
+    ratings = pd.DataFrame({"song_id": [1, 2, 3], "valence": [5.0, np.nan, 4.0], "arousal": [3.0, 2.0, np.nan]})
+    m = R.merge_ratings(np.array([1, 2, 3, 4]), ratings)
+    assert m["rated"].tolist() == [True, False, False, False]
+    assert (m["dropped_no_rating_row"], m["dropped_nan_rating"], m["dropped_no_rating"]) == (1, 2, 3)
+    assert m["valence"][0] == 5.0 and np.isnan(m["valence"][3])
+
+
+def test_export_shares_run_definitions():
+    from src.perception import export
+    assert export.page_features is R.page_features
+    assert export.merge_ratings is R.merge_ratings and export.deam_split is R.deam_split
+
+
+def _old_boot_r2(y, pred, n, seed):  # the pre-refactor implementation, verbatim
+    rng = np.random.default_rng(seed)
+    m = len(y)
+    v = np.empty(n)
+    for i in range(n):
+        idx = rng.integers(0, m, m)
+        v[i] = R._r2(y[idx], pred[idx])
+    lo, hi = np.percentile(v, [2.5, 97.5])
+    return float(lo), float(hi)
+
+
+def _old_boot_r(y, pred, n, seed):
+    rng = np.random.default_rng(seed)
+    m = len(y)
+    v = np.empty(n)
+    for i in range(n):
+        idx = rng.integers(0, m, m)
+        v[i] = R._corr(y[idx], pred[idx])
+    lo, hi = np.percentile(v, [2.5, 97.5])
+    return dict(r=R._corr(y, pred), lo=float(lo), hi=float(hi))
+
+
+def test_boot_helpers_bit_identical():
+    rng = np.random.default_rng(4)
+    for m in (30, 101):
+        y = rng.standard_normal(m)
+        pred = 0.5 * y + rng.standard_normal(m)
+        assert R.boot_r2(y, pred, n=300) == _old_boot_r2(y, pred, 300, SEED)
+        assert R.boot_r(y, pred, n=300) == _old_boot_r(y, pred, 300, SEED)
 
 
 def test_run_refuses_without_goahead(fixture):
