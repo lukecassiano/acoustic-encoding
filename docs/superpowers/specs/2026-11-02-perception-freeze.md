@@ -105,12 +105,12 @@ PMEmo inclusion (`src/pmemo.py`): all choruses with an existing `data/pmemo/chor
 ### PMEmo counts (filled in after extraction, before go-ahead; audio-only, no ratings involved)
 | Item | Value |
 |---|---|
-| Choruses found | TBD |
-| Choruses included | TBD |
-| Skipped: unreadable | TBD |
-| Skipped: shorter than 9 s | TBD |
-| Skipped: silent | TBD |
-| Skipped: no rating (dropped at merge, counted) | TBD |
+| Choruses found | 794 (mp3s in chorus/) |
+| Choruses included | 794 |
+| Skipped: unreadable | 0 |
+| Skipped: shorter than 9 s | 0 |
+| Skipped: silent | 0 |
+| Skipped: no rating (dropped at merge, counted) | 27 (no rating row; 0 with NaN value) |
 
 ## Environment (.venv)
 python 3.13.14, numpy 2.3.5, scipy 1.15.3, scikit-learn 1.9.1, librosa 1.0.0.
