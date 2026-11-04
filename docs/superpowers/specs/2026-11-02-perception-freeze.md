@@ -1,5 +1,7 @@
 # CAMP perception layer: pre-registration freeze (DRAFT, counts pending)
 
+Status (2026-11-03): go-ahead signed (9bd4311); counts complete (DEAM a1e8342, PMEmo 0c2ae77); ratings read and the pre-registered run completed with code 758b24e. The sentences below describe the state at freezing.
+
 Date: 2026-11-02 (frozen on go-ahead)
 Spec: `docs/superpowers/specs/2026-11-02-perception-layer-design.md`, commit `70a13b5a411a4ba2c0e4deec38e3d23f10e19df1`
 Branch: `perception-1`. No ratings have been read. `src.deam.load_ratings` refuses until the final line below carries a go-ahead.
@@ -119,5 +121,14 @@ python 3.13.14, numpy 2.3.5, scipy 1.15.3, scikit-learn 1.9.1, librosa 1.0.0.
 - 2026-11-02, after H4 was frozen (commit ad7f335): during code review, a reviewer subagent ran `head -c 300` on `data/pmemo/annotations/static_annotations.csv`, which may have displayed up to ~20 rows of PMEmo static ratings. The subagent had no analysis role and its context was discarded; no analysis choice was made or changed afterwards. No DEAM rating has been displayed to anyone. Luke unpacked the DEAM annotations archive but did not open any file.
 
 - 2026-11-03: Luke gave the go-ahead (in chat; line written by Claude at his instruction) while the PMEmo extraction was still running, so the PMEmo counts table is filled after the go-ahead, contrary to its heading. The counts are mechanical (skip rules and inclusion code frozen in ad7f335) and are taken from audio and the ratings file's ID column only. DEAM counts were filled before the go-ahead (a1e8342).
+
+- 2026-11-03, run-time readings of underspecified points (marked FREEZE-AMBIGUITY in `src/perception/run.py`; code 758b24e; none changes a rule or verdict threshold):
+  - Permutation p values are reported for every DEAM held-out model but not for the PMEmo predictions (the H4 section names Pearson r with a bootstrap CI as its only metric), although the aggregation rules say "for every model".
+  - Per-model R2 95% intervals (descriptive, same resampling as `boot_diff`) were added for the figures and gate nothing.
+  - Each H4 bootstrap interval uses a fresh `default_rng(SEED)` (the same convention as R17), so listeners share resamples.
+  - A rating row with a missing valence or arousal is treated as "no rating" (0 such rows in DEAM and PMEmo).
+  - The train/test split is drawn on all DEAM songs in `levels.npz` and unrated songs are dropped afterwards (0 unrated in DEAM, so it makes no difference).
+  - Descriptive markers (†edge for an alpha at a grid end; ‡ for a "supported" result where the winning R2 <= 0 or |diff| < 0.01) were added to `results.md` before the real run and change no verdict. In the real run no model sat at a grid edge.
+  - L1 means include ~6 tail frames of ear-model padding for the maximum propagation distance (`render_binaural` pads ~2.6k samples), ~0.16% of a DEAM excerpt's frames; frozen behaviour, noted for exactness.
 
 Go-ahead: Luke, 2026-11-03

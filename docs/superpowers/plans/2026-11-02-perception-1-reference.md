@@ -1,5 +1,7 @@
 # CAMP Perception Layer — Plan 1: Python ear model and the affect-rating test
 
+**Status (2026-11-03):** Tasks 1–11 complete on `perception-1`; real run 758b24e; final review done. Exception: Task 8 Step 6 committed code only; `results.md`/`results.json` are deliberately uncommitted (only if Luke asks).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A tested Python ear model (speaker → spherical head → cochlea → loudness → brainstem cues), the DEAM level representations L0/L1/L2, the pre-registered tests H1–H3 with figures for the Music 108 paper, and the page readout (L1 + L2) exported for the website.
@@ -73,7 +75,7 @@ Constants (`constants.py`, exact values):
 
   Directivity is g(φ) = max(0.05, (1 − β) + β cos φ); the speaker faces the listener, so φ = 0 for the listener. Biquads follow the RBJ Audio EQ Cookbook formulas so JS can reproduce them exactly.
 
-- [ ] **Step 1: Write the failing tests** in `tests/ear/test_room.py`
+- [x] **Step 1: Write the failing tests** in `tests/ear/test_room.py`
 
 ```python
 def test_studio_front_is_identity_up_to_delay_and_head():
@@ -102,15 +104,15 @@ def test_two_sources_superpose():
     assert np.allclose(L, La + Lb) and np.allclose(R, Ra + Rb)
 ```
 
-- [ ] **Step 2: Run** `.venv/Scripts/python -m pytest tests/ear/test_room.py -q`. Expected: FAIL (`ModuleNotFoundError: src.ear`).
-- [ ] **Step 3: Implement `src/ear/constants.py` and `src/ear/room.py`.**
+- [x] **Step 2: Run** `.venv/Scripts/python -m pytest tests/ear/test_room.py -q`. Expected: FAIL (`ModuleNotFoundError: src.ear`).
+- [x] **Step 3: Implement `src/ear/constants.py` and `src/ear/room.py`.**
   - Head model (Brown & Duda 1998): for each ear, θ is the angle between the source direction and that ear's axis (ears at ±90°).
   - Shadow filter H(ω) = (1 + jα(θ)ω/2ω₀)/(1 + jω/2ω₀), with ω₀ = C_SOUND/HEAD_RADIUS and α(θ) = (1 + ALPHA_MIN/2) + (1 − ALPHA_MIN/2)·cos(θ/THETA_MIN_DEG·180°). It is discretized by the bilinear transform with prewarping at ω₀.
   - Per-ear delay T(θ) = −(a/c)cos θ for θ < 90°, else (a/c)(θ − π/2). Add a constant a/c so delays are non-negative.
   - Propagation: gain REF_DIST/max(d, MIN_DIST) and delay max(d, MIN_DIST)/C_SOUND, where d is the source's distance. Fractional delays use linear interpolation.
   - Output length = input length + max delay in samples, zero-padded.
-- [ ] **Step 4: Run tests.** Expected: 6 passed.
-- [ ] **Step 5: Commit** `feat(ear): speaker presets, propagation, spherical head`.
+- [x] **Step 4: Run tests.** Expected: 6 passed.
+- [x] **Step 5: Commit** `feat(ear): speaker presets, propagation, spherical head`.
 
 ### Task 2: Ear model II — outer/middle ear, cochlea, hair cells, loudness
 
@@ -137,7 +139,7 @@ Constants:
 
 Outer and middle ear: each channel's power is weighted by `−(iso226_contour(40, cf) − 40)` dB. That is the inverted 40-phon equal-loudness contour, applied per channel. Implement ISO 226:2003 §4.1 with its Table 1 parameters (copy them from the standard; cite it in the docstring). Sone calibration: a 1 kHz tone at 40 dB SPL gives 1.0 sone. Phon = 40 + 10·log2(sone) for sone ≥ 1, and 40·(sone + 0.0005)^0.35 below 1 sone (ANSI S3.4-2007 approximation).
 
-- [ ] **Step 1: Write the failing tests** in `tests/ear/test_cochlea.py`
+- [x] **Step 1: Write the failing tests** in `tests/ear/test_cochlea.py`
 
 ```python
 def test_erb_spacing():
@@ -168,12 +170,12 @@ def test_silence_finite():
 
 `tone` comes from `tests/ear/conftest.py`. Its level convention matches `CAL_DB_AT_RMS_0_1`.
 
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement.**
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement.**
   - Gammatone: a cascade of GT_ORDER complex one-pole filters at baseband (shift by e^{−j2πcf·t}, filter, shift back, take the real part), with bandwidth `GT_B·ERB(cf)`, where ERB(f) = 24.7(4.37f/1000 + 1). Normalize each channel to 0 dB gain at cf.
   - Silence: sone 0, phon floor 0.
-- [ ] **Step 4: Run.** Expected: 7 passed. If the 3-dB bandwidth test fails by a constant factor, fix the gain normalization, not the test.
-- [ ] **Step 5: Commit** `feat(ear): ISO 226 weighting, gammatone cochlea, hair cells, loudness`.
+- [x] **Step 4: Run.** Expected: 7 passed. If the 3-dB bandwidth test fails by a constant factor, fix the gain normalization, not the test.
+- [x] **Step 5: Commit** `feat(ear): ISO 226 weighting, gammatone cochlea, hair cells, loudness`.
 
 ### Task 3: Ear model III — brainstem cues, `hear()`, psychophysics
 
@@ -193,7 +195,7 @@ def test_silence_finite():
   - `hear(left, right, sr=EAR_SR) -> EarOut`
   - `listen(sources: list[Source]) -> EarOut` (= `hear(*render_binaural(sources))`)
 
-- [ ] **Step 1: Write the failing tests** (these are spec §6's psychophysical checks)
+- [x] **Step 1: Write the failing tests** (these are spec §6's psychophysical checks)
 
 ```python
 def test_itd_low_frequency_matches_geometry():  # 500 Hz tone at 90 deg left
@@ -218,10 +220,10 @@ def test_spl_calibration():
     assert listen([Source(noise_rms(0.1), 0.0, 1.0)]).spl_db[0] == pytest.approx(70.0, abs=0.5)
 ```
 
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement** `cues`, `hear`, `listen`. `spl_db` = CAL_DB_AT_RMS_0_1 + 20·log10(rms/0.1) per ear, floored at 0.
-- [ ] **Step 4: Run the whole ear suite.** Expected: 18 passed.
-- [ ] **Step 5: Commit** `feat(ear): brainstem ITD/ILD and psychophysical checks`.
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement** `cues`, `hear`, `listen`. `spl_db` = CAL_DB_AT_RMS_0_1 + 20·log10(rms/0.1) per ear, floored at 0.
+- [x] **Step 4: Run the whole ear suite.** Expected: 18 passed.
+- [x] **Step 5: Commit** `feat(ear): brainstem ITD/ILD and psychophysical checks`.
 
 ### Task 4: DEAM access and loader (no ratings)
 
@@ -239,11 +241,11 @@ def test_spl_calibration():
 
 Inclusion (frozen here, restated in the freeze file): the 2013–2014 45 s excerpts only (song IDs below 2000). The 2015 full-length songs are excluded because their rating protocol and length differ. `group` = the artist name, lower-cased and stripped; if the artist is missing, `"song-<id>"`.
 
-- [ ] **Step 1: Get the data.** Download the DEAM audio and metadata archives from the official DEAM page (cvml.unige.ch/databases/DEAM, mirrored on Kaggle). Unzip to `data/deam/`.
+- [x] **Step 1: Get the data.** Download the DEAM audio and metadata archives from the official DEAM page (cvml.unige.ch/databases/DEAM, mirrored on Kaggle). Unzip to `data/deam/`.
   - Do **not** open the annotation CSVs. Unzip the annotations archive, but leave the files unread.
   - Record in `data/deam/SOURCE.md`: the URL, the date, the archive checksums, the licence text as published, and the file counts.
   - **If access fails or the licence forbids research use, stop and report to Luke** with the fallbacks from spec §4 (PMEmo, then the "1000 songs" set).
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 ```python
 def test_excerpts_schema_and_inclusion(): df = excerpts(); assert df.song_id.max() < 2000 and df.group.notna().all() and len(df) > 1500
@@ -259,10 +261,10 @@ def test_ratings_load_with_goahead_on_fixture(tmp_path, monkeypatch):
     assert list(load_ratings(f).columns) == ["song_id", "valence", "arousal"]
 ```
 
-- [ ] **Step 3: Run.** Expected: FAIL.
-- [ ] **Step 4: Implement.** `load_ratings` checks the go-ahead line first, then reads the static averaged-song CSV(s) and renames `valence_mean`/`arousal_mean` (column names stripped of whitespace). Audio decoding goes through `librosa.load(..., sr=None, mono=True)`, then resampling to each rate.
-- [ ] **Step 5: Run.** Expected: 4 passed.
-- [ ] **Step 6: Commit** `feat(perception): DEAM loader with ratings gate` (code only; data stays gitignored).
+- [x] **Step 3: Run.** Expected: FAIL.
+- [x] **Step 4: Implement.** `load_ratings` checks the go-ahead line first, then reads the static averaged-song CSV(s) and renames `valence_mean`/`arousal_mean` (column names stripped of whitespace). Audio decoding goes through `librosa.load(..., sr=None, mono=True)`, then resampling to each rate.
+- [x] **Step 5: Run.** Expected: 4 passed.
+- [x] **Step 6: Commit** `feat(perception): DEAM loader with ratings gate` (code only; data stays gitignored).
 
 ### Task 5: Representation levels per excerpt (resumable)
 
@@ -289,7 +291,7 @@ def test_ratings_load_with_goahead_on_fixture(tmp_path, monkeypatch):
 
 `load_bundle` converts `meta["bands"][band]` into the tuple form `probe_design` expects: `stats[band] = (np.array(mean), np.array(std), np.array(nuisance))`, with nuisance of shape (6, F·5). `stats` for `xbar` comes from **sub-001's** bundle. Every listener's bundle has identical feature stats and nuisance betas, because the design is subject-independent. Assert this across sub-001…005 in `load_bundle`, and fail loudly if any differ.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_l2_is_xbar_times_weights():  # the span property spec §5.4 relies on
@@ -313,11 +315,11 @@ def test_short_or_silent_excerpt_skipped(tmp_path):
 
 `process_one(path) -> tuple[str, str | dict]` is the per-song worker the CLI maps over. It returns `("ok", arrays)` or `("skip", reason)`.
 
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run.** Expected: 5 passed.
-- [ ] **Step 5: Full extraction (no ratings involved).** Run `.venv/Scripts/python -m src.perception.levels --workers 4` with sleep disabled; it resumes if interrupted. Expected: `levels.npz` with > 1,500 rows and no NaN. Report the skip counts by reason and the wall time.
-- [ ] **Step 6: Commit** `feat(perception): L0/L1/L2 representations per excerpt`.
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run.** Expected: 5 passed.
+- [x] **Step 5: Full extraction (no ratings involved).** Run `.venv/Scripts/python -m src.perception.levels --workers 4` with sleep disabled; it resumes if interrupted. Expected: `levels.npz` with > 1,500 rows and no NaN. Report the skip counts by reason and the wall time.
+- [x] **Step 6: Commit** `feat(perception): L0/L1/L2 representations per excerpt`.
 
 ### Task 6: Freeze file — STOP for Luke's go-ahead
 
@@ -326,7 +328,7 @@ def test_short_or_silent_excerpt_skipped(tmp_path):
 
 This is a human gate: nothing after this task opens ratings until Luke adds the go-ahead line.
 
-- [ ] **Step 1: Write the freeze file** (one page). It must contain:
+- [x] **Step 1: Write the freeze file** (one page). It must contain:
   - the spec commit hash
   - the inclusion rule and the counts from `skipped.csv`
   - L0/L1/L2 definitions with dimensions, including the exact L1 summary from Task 5 and the ear constants, quoted from `constants.py` by name and value
@@ -335,8 +337,8 @@ This is a human gate: nothing after this task opens ratings until Luke adds the 
   - the theory baseline (Task 7)
   - H1–H3 verdict rules verbatim from spec §5.3–5.4
   - a final line: `Go-ahead: (Luke writes "Go-ahead: Luke, YYYY-MM-DD" here)`
-- [ ] **Step 2: Commit** `docs(perception): pre-registration freeze`.
-- [ ] **Step 3: Stop and report to Luke** with a 5-line summary of the freeze. Continue with Task 7 (synthetic data only) while waiting. Task 8 must not start until `load_ratings` stops raising.
+- [x] **Step 2: Commit** `docs(perception): pre-registration freeze`.
+- [x] **Step 3: Stop and report to Luke** with a 5-line summary of the freeze. Continue with Task 7 (synthetic data only) while waiting. Task 8 must not start until `load_ratings` stops raising.
 
 ### Task 7: Readout and statistics library (synthetic data only)
 
@@ -361,7 +363,7 @@ This is a human gate: nothing after this task opens ratings until Luke adds the 
     - "not supported" if hi < 0
     - "inconclusive" otherwise
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_split_respects_groups(): tr, te = split(groups); assert not set(groups[tr]) & set(groups[te])
@@ -373,10 +375,10 @@ def test_random_projection_shapes_and_norms(): ...  # n draws, finite; block col
 def test_verdict(): assert verdict(0.01, 0.2) == "supported" and verdict(-0.1, 0.1) == "inconclusive"
 ```
 
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run.** Expected: 6 passed.
-- [ ] **Step 5: Commit** `feat(perception): ridge readout, bootstrap, permutation, random projections`.
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run.** Expected: 6 passed.
+- [x] **Step 5: Commit** `feat(perception): ridge readout, bootstrap, permutation, random projections`.
 
 ### Task 8: Hypotheses run (after go-ahead only)
 
@@ -396,12 +398,12 @@ def test_verdict(): assert verdict(0.01, 0.2) == "supported" and verdict(-0.1, 0
   - **Descriptive:** the page readout L1 + L2 held-out R² per listener; theory baseline R²; `perm_p` for every model.
   - **Exploratory (labelled):** per-listener differences. Continuous ratings are left out of this plan (spec §5.5 allows it).
 
-- [ ] **Step 1: Write the failing test.** `test_run_end_to_end_on_fixture` uses a 120-song synthetic levels file plus synthetic ratings with a planted L1→arousal signal, and asserts H1 = "supported" and that every verdict is one of the three strings.
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement.** `results.md` holds tables and verdicts only, with no interpretation prose.
-- [ ] **Step 4: Run the test.** Expected: PASS.
-- [ ] **Step 5: Real run.** Confirm `load_ratings` passes (the go-ahead is present), then run the CLI. Report the verdict table to Luke exactly as produced.
-- [ ] **Step 6: Commit** `feat(perception): pre-registered hypothesis run` (code; commit `results.md` only if Luke asks).
+- [x] **Step 1: Write the failing test.** `test_run_end_to_end_on_fixture` uses a 120-song synthetic levels file plus synthetic ratings with a planted L1→arousal signal, and asserts H1 = "supported" and that every verdict is one of the three strings.
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement.** `results.md` holds tables and verdicts only, with no interpretation prose.
+- [x] **Step 4: Run the test.** Expected: PASS.
+- [x] **Step 5: Real run.** Confirm `load_ratings` passes (the go-ahead is present), then run the CLI. Report the verdict table to Luke exactly as produced.
+- [x] **Step 6: Commit** `feat(perception): pre-registered hypothesis run` (code; commit `results.md` only if Luke asks). Done for code (758b24e); `results.md`/`results.json` deliberately NOT committed (Luke has not asked).
 
 ### Task 9: Paper figures
 
@@ -417,8 +419,8 @@ def test_verdict(): assert verdict(0.01, 0.2) == "supported" and verdict(-0.1, 0
   - `projection_null`: a histogram per listener with an L2 marker
   - `psychophysics`: ITD and ILD against azimuth for 4 channels from the ear model, with the Woodworth curve overlaid
 
-- [ ] **Step 1: Implement and run** `.venv/Scripts/python -m src.perception.figures`. Expected: 4 files, and none of them blank (each figure's axes contain data).
-- [ ] **Step 2: Commit** `feat(perception): paper figures`.
+- [x] **Step 1: Implement and run** `.venv/Scripts/python -m src.perception.figures`. Expected: 4 files, and none of them blank (each figure's axes contain data). Done: five figures exist (the four above plus `generalisation.png` from the H4 addendum).
+- [x] **Step 2: Commit** `feat(perception): paper figures`.
 
 ### Task 10: Page readout and web export
 
@@ -441,11 +443,11 @@ def test_verdict(): assert verdict(0.01, 0.2) == "supported" and verdict(-0.1, 0
 
   `readout_boot.f32` has shape (200, 2, n_kept + 1): coefficients plus intercept from 200 refits on bootstrap resamples of training songs (resampled by group). This is what the page's stability rule needs (spec §7.3).
 
-- [ ] **Step 1: Write the failing test.** `test_export_roundtrip` exports from a fixture, reloads the JSON and f32, recomputes predictions for 5 fixture songs from the exported numbers alone, and asserts they equal `model.predict` to 1e-5. It also checks the bootstrap array shape.
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement** and run `python -m src.perception.export` for listeners 001–005.
-- [ ] **Step 4: Run.** Expected: PASS. Then update CLAUDE.md.
-- [ ] **Step 5: Commit** `feat(perception): page readout export`.
+- [x] **Step 1: Write the failing test.** `test_export_roundtrip` exports from a fixture, reloads the JSON and f32, recomputes predictions for 5 fixture songs from the exported numbers alone, and asserts they equal `model.predict` to 1e-5. It also checks the bootstrap array shape.
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement** and run `python -m src.perception.export` for listeners 001–005.
+- [x] **Step 4: Run.** Expected: PASS. Then update CLAUDE.md.
+- [x] **Step 5: Commit** `feat(perception): page readout export`.
 
 ---
 
