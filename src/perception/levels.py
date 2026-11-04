@@ -8,10 +8,17 @@ L2  CAMP's predicted cortical response, split into the acoustic and structural p
 
 L0 and L2 come from the raw excerpt (F.extract(F.prepare(y22))); only L1 sees the ear-rendered signal.
 Clip means use TR rows with index >= TR_START (>= 7.5 s) for every level.
+
+Provenance: xbar is standardized with sub-001's bundle stats (data/web/sub-001/meta.json, written by
+src.export_web). `main` writes data/perception/<pre>levels_provenance.json beside each aggregate with
+bundle_fingerprint("001"); src.perception.run and .export warn loudly when it no longer matches the
+current bundle. Order of the pipeline: src.export_web -> levels -> run -> export.
 """
 
 import argparse
+import hashlib
 import json
+import sys
 from functools import lru_cache
 from multiprocessing import Pool
 
@@ -34,6 +41,9 @@ SILENT_RMS = 1e-6
 MOD_LO_HZ, MOD_HI_HZ, MOD_ORDER = 0.5, 20.0, 2
 L1_START_S = 7.5
 MOD_FLOOR = 1e-12
+
+# the one render configuration of the simulated ear (L1), exported with the page readout
+CONFIG = dict(azimuth=0, distance=1, preset="studio", gain_db=0)
 
 WEB = F.DATA / "web"
 OUT = F.DATA / "perception"
@@ -75,6 +85,58 @@ def load_bundle(sub):
                 acoustic_cols=ACOUSTIC_COLS, structural_cols=STRUCTURAL_COLS)
 
 
+def _sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def file_sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def bundle_fingerprint(sub, web=None):
+    """What a listener's perception numbers depend on in its export_web bundle: sha256 of the raw
+    w_region.f32 bytes and of meta["bands"] as canonical JSON (sorted keys, no whitespace)."""
+    d = (WEB if web is None else web) / f"sub-{sub}"
+    bands = json.loads((d / "meta.json").read_text())["bands"]
+    canon = json.dumps(bands, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return dict(w_region_sha256=file_sha256(d / "w_region.f32"), bands_sha256=_sha256(canon.encode("utf-8")))
+
+
+def provenance_path(levels_path):
+    """data/perception/levels.npz -> data/perception/levels_provenance.json"""
+    return levels_path.with_name(levels_path.stem + "_provenance.json")
+
+
+def write_provenance(levels_path, fingerprint, sub="001"):
+    doc = dict(levels_file=levels_path.name, bundle_sub=sub, bundle_fingerprint=fingerprint)
+    provenance_path(levels_path).write_text(json.dumps(doc, indent=1), encoding="utf-8")
+    return doc
+
+
+def check_provenance(levels_path, web=None):
+    """Compare a levels file's sidecar with the current sub-001 bundle. Warns loudly (stderr) on a
+    mismatch or a missing sidecar; returns the sidecar dict (None if missing) and never raises."""
+    p = provenance_path(levels_path)
+    if not p.exists():
+        print(f"WARNING: {p} missing; cannot tie {levels_path.name} to the bundle its xbar was built "
+              "from", file=sys.stderr, flush=True)
+        return None
+    doc = json.loads(p.read_text(encoding="utf-8"))
+    now = bundle_fingerprint(doc.get("bundle_sub", "001"), web)
+    if doc.get("bundle_fingerprint") != now:
+        bar = "!" * 78
+        lines = [bar, f"WARNING: {levels_path.name} was built from a different sub-{doc.get('bundle_sub')} "
+                 "bundle than data/web holds now",
+                 f"  sidecar: {doc.get('bundle_fingerprint')}", f"  current: {now}",
+                 "xbar (and every L2 number) is stale; re-run src.perception.levels", bar]
+        print(*lines, sep="\n", file=sys.stderr, flush=True)
+    return doc
+
+
 @lru_cache(maxsize=1)
 def _stats_001():
     return load_bundle("001")["stats"]
@@ -107,7 +169,8 @@ def _modulation_depth(env):
 
 
 def l1(y44):
-    out = listen([Source(y44, 0.0, 1.0, "studio", 0.0)])
+    out = listen([Source(y44, float(CONFIG["azimuth"]), float(CONFIG["distance"]), CONFIG["preset"],
+                         float(CONFIG["gain_db"]))])
     start = int(round(L1_START_S / FRAME_S))
     per_ear = []
     for ear in (out.left, out.right):
@@ -157,13 +220,21 @@ def _record(result, skipped, i, n):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--workers", type=int, default=4)
-    ap.add_argument("--limit", type=int, default=None, help="only the first N excerpts (testing)")
+    ap.add_argument("--limit", type=int, default=None,
+                    help="only the first N excerpts (testing); the aggregate goes to <pre>levels_limitN.npz")
     ap.add_argument("--dataset", choices=["deam", "pmemo"], default="deam")
     args = ap.parse_args(argv)
     pre = "" if args.dataset == "deam" else "pmemo_"
     df = (excerpts if args.dataset == "deam" else pmemo_excerpts)()
+    stem = f"{pre}levels"
     if args.limit is not None:
         df = df.head(args.limit)
+        stem += f"_limit{args.limit}"  # never overwrite the real aggregate
+    fingerprint = bundle_fingerprint("001")
+    real = provenance_path(OUT / f"{pre}levels.npz")
+    if real.exists() and json.loads(real.read_text(encoding="utf-8"))["bundle_fingerprint"] != fingerprint:
+        raise RuntimeError(f"{real} records a different sub-001 bundle than data/web holds now: the cached "
+                           f"per-song files in {OUT / f'{pre}levels'} are stale; clear them and re-run")
     cache = OUT / f"{pre}levels"
     cache.mkdir(parents=True, exist_ok=True)
     todo = [(int(r.song_id), r.path, cache) for r in df.itertuples() if not (cache / f"{int(r.song_id)}.npz").exists()
@@ -186,12 +257,17 @@ def main(argv=None):
         if f.exists():
             z = np.load(f)
             rows.append((int(r.song_id), r.group, z["l0"], z["l1"], z["xbar"]))
-    np.savez(OUT / f"{pre}levels.npz", song_id=np.array([r[0] for r in rows], dtype=int),
+    if bundle_fingerprint("001") != fingerprint:
+        raise RuntimeError("the sub-001 bundle changed during extraction; nothing aggregated")
+    agg = OUT / f"{stem}.npz"
+    np.savez(agg, song_id=np.array([r[0] for r in rows], dtype=int),
              group=np.array([r[1] for r in rows], dtype=str),
              L0=np.array([r[2] for r in rows]).reshape(len(rows), -1),
              L1=np.array([r[3] for r in rows]).reshape(len(rows), -1),
              xbar=np.array([r[4] for r in rows]).reshape(len(rows), -1))
-    pd.DataFrame(sorted(skipped.items()), columns=["song_id", "reason"]).to_csv(OUT / f"{pre}skipped.csv", index=False)
+    write_provenance(agg, fingerprint)
+    skip_name = f"{pre}skipped" + ("" if args.limit is None else f"_limit{args.limit}")
+    pd.DataFrame(sorted(skipped.items()), columns=["song_id", "reason"]).to_csv(OUT / f"{skip_name}.csv", index=False)
     print(f"{len(rows)} excerpts, {len(skipped)} skipped: "
           f"{pd.Series(list(skipped.values())).value_counts().to_dict()}")
 

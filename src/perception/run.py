@@ -21,7 +21,12 @@ PMEmo record ("prec"): {"r", "lo", "hi"} = Pearson r and 2.5/97.5 bootstrap perc
 {
   "meta": {"freeze", "seed", "test_size", "alphas", "n_folds", "n_boot", "n_perm", "n_proj",
            "listeners": ["001",..], "R": {sub: R}, "region_names": {sub: [..]},
-           "l0_acoustic_cols": [..61 L0 indices], "l0_structural_cols": [..8 indices]},
+           "l0_acoustic_cols": [..61 L0 indices], "l0_structural_cols": [..8 indices],
+           provenance (descriptive; no number depends on it):
+           "freeze_sha256", "git_commit" (HEAD when run; null outside git),
+           "levels_sha256", "pmemo_levels_sha256",
+           "bundle_fingerprints": {sub: {"w_region_sha256", "bands_sha256"}} (levels.bundle_fingerprint),
+           "levels_provenance", "pmemo_levels_provenance": the levels sidecars (null if missing)},
   "data": {"deam":  {"n_levels", "n_rated", "dropped_no_rating" (= dropped_no_rating_row +
                      dropped_nan_rating), "dropped_no_rating_row", "dropped_nan_rating", "n_train", "n_test",
                      "n_groups" (rated songs), "n_groups_train", "n_groups_test",
@@ -51,6 +56,7 @@ Verdict strings are always one of "supported", "not supported", "inconclusive".
 
 import argparse
 import json
+import subprocess
 from multiprocessing import Pool
 from pathlib import Path
 
@@ -58,8 +64,8 @@ import numpy as np
 
 from src import deam, pmemo
 from src import features as F
-from src.perception.levels import (ACOUSTIC_COLS, L0_NAMES, OUT, STRUCTURAL_COLS, SUBS, l2,
-                                   load_bundle)
+from src.perception.levels import (ACOUSTIC_COLS, L0_NAMES, OUT, STRUCTURAL_COLS, SUBS, bundle_fingerprint,
+                                   check_provenance, file_sha256, l2, load_bundle)
 from src.perception.readout import (ALPHAS, N_BOOT, N_FOLDS, N_PERM, N_PROJ, SEED, TEST_SIZE,
                                     _corr, _r2, boot_diff, fit_readout, heldout, perm_p,
                                     random_projection_r2, split, theory_baseline, verdict)
@@ -210,6 +216,26 @@ def _h3_job(args):
                                      n=n_proj, seed=SEED)
 
 
+# ------------------------------------------------------------------ provenance
+
+def git_commit():
+    """HEAD of the repository holding this file, or None outside git."""
+    try:
+        return subprocess.run(["git", "-C", str(F.ROOT), "rev-parse", "HEAD"], capture_output=True, text=True,
+                              check=True).stdout.strip() or None
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def provenance(freeze_path, levels_path, pmemo_path):
+    """Fields recorded in results.json["meta"]; descriptive only, no number depends on them."""
+    return dict(freeze_sha256=file_sha256(freeze_path), git_commit=git_commit(),
+                levels_sha256=file_sha256(levels_path), pmemo_levels_sha256=file_sha256(pmemo_path),
+                bundle_fingerprints={s: bundle_fingerprint(s) for s in SUBS},
+                levels_provenance=check_provenance(levels_path),
+                pmemo_levels_provenance=check_provenance(pmemo_path))
+
+
 # ------------------------------------------------------------------ run
 
 def run(freeze_path, n_boot=N_BOOT, n_perm=N_PERM, n_proj=N_PROJ, workers=1,
@@ -231,6 +257,7 @@ def run(freeze_path, n_boot=N_BOOT, n_perm=N_PERM, n_proj=N_PROJ, workers=1,
     P = rated_only(load_levels(pmemo_path, pmemo.load_ratings(freeze_path)))
 
     # tr / te index the full DEAM arrays (unrated songs are in neither)
+    prov = provenance(freeze_path, levels_path, pmemo_path)
     tr, te = deam_split(D["group"], D["rated"])
     gtr = D["group"][tr]
     Y = {k: (D[k][tr], D[k][te]) for k in RATINGS}
@@ -334,7 +361,7 @@ def run(freeze_path, n_boot=N_BOOT, n_perm=N_PERM, n_proj=N_PROJ, workers=1,
                   n_folds=N_FOLDS, n_boot=n_boot, n_perm=n_perm, n_proj=n_proj, listeners=list(SUBS),
                   R={s: int(bundles[s]["W_region"].shape[1]) for s in SUBS},
                   region_names={s: list(bundles[s]["region_names"]) for s in SUBS},
-                  l0_acoustic_cols=L0_ACOUSTIC, l0_structural_cols=L0_STRUCTURAL),
+                  l0_acoustic_cols=L0_ACOUSTIC, l0_structural_cols=L0_STRUCTURAL, **prov),
         data=dict(deam=dict(n_levels=D["n_levels"], n_rated=int(D["rated"].sum()),
                             dropped_no_rating=D["dropped_no_rating"],
                             dropped_no_rating_row=D["dropped_no_rating_row"],
@@ -386,9 +413,14 @@ def _rec(res, name, sub, k):
     return m[k] if sub is None else m[sub][k]
 
 
-def _is_edge(rec, alphas):
-    a = rec.get("alpha")
+def alpha_at_edge(a, alphas=ALPHAS):
+    """The one grid-edge predicate (results.md and figures): a CV-chosen ridge alpha at either end of
+    the grid. None (no ridge, e.g. the theory baseline) is never at an edge."""
     return a is not None and bool(np.isclose(a, alphas[0]) or np.isclose(a, alphas[-1]))
+
+
+def _is_edge(rec, alphas):
+    return alpha_at_edge(rec.get("alpha"), alphas)
 
 
 def _alpha(rec, alphas):

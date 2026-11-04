@@ -31,8 +31,10 @@ def apply(doc, x, rating):
 def test_export_roundtrip(tmp_path):
     lv, ratings, bundle, X = fixture()
     n_boot = 5
-    export.export_listener("001", lv, ratings, bundle, tmp_path, n_boot=n_boot)
+    fp = {"w_region_sha256": "w", "bands_sha256": "b"}
+    export.export_listener("001", lv, ratings, bundle, tmp_path, n_boot=n_boot, fingerprint=fp)
     doc = json.loads((tmp_path / "readout.json").read_text())
+    assert doc["bundle_fingerprint"] == fp
     boot = np.fromfile(tmp_path / "readout_boot.f32", dtype="<f4")
     assert (tmp_path / "readout_boot.f32.gz.b64.txt").exists()
     k = len(doc["keep"])
@@ -121,3 +123,24 @@ def test_zero_variance_in_resample_is_dropped():
     assert c[list(keep).index(5)] == 0.0
     z = (X[:, keep] - sc.mean_) / sc.scale_
     assert np.allclose(z @ c + i0, mb.predict(X), atol=1e-8)
+
+
+def test_export_checks_fingerprints_against_results(tmp_path):
+    import pytest
+    from src.perception.levels import file_sha256
+    lv = tmp_path / "levels.npz"
+    lv.write_bytes(b"levels")
+    fps = {"001": {"w_region_sha256": "w1", "bands_sha256": "b"}, "002": {"w_region_sha256": "w2", "bands_sha256": "b"}}
+    res = tmp_path / "results.json"
+    export.check_against_results(fps, lv, res)  # no results.json yet: warn only
+    res.write_text(json.dumps({"meta": {"seed": 0}}))
+    with pytest.raises(RuntimeError, match="no bundle fingerprints"):
+        export.check_against_results(fps, lv, res)
+    meta = {"bundle_fingerprints": fps, "levels_sha256": file_sha256(lv)}
+    res.write_text(json.dumps({"meta": meta}))
+    export.check_against_results(fps, lv, res)  # matching: passes
+    with pytest.raises(RuntimeError, match="sub-002"):
+        export.check_against_results({**fps, "002": {"w_region_sha256": "other", "bands_sha256": "b"}}, lv, res)
+    lv.write_bytes(b"rebuilt levels")
+    with pytest.raises(RuntimeError, match="differs from the levels file"):
+        export.check_against_results(fps, lv, res)

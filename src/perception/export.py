@@ -21,6 +21,13 @@ it is re-expressed in the main scaler's space: with refit mean m_b, std s_b, coe
     coef_j = c_b,j * s_j / s_b,j ;  intercept = b_b + sum_j c_b,j * (m_j - m_b,j) / s_b,j
 (columns constant in the resample get coef 0). Applying a row with the formula above reproduces
 that refit's predictions exactly, so the page can recompute contributions per bootstrap (spec 7.3).
+
+Order: src.export_web (writes the bundle: meta.json, w_region.f32, ...) -> src.perception.levels ->
+src.perception.run -> this module. export_web leaves readout.json / readout_boot.f32(.gz.b64.txt) in
+place, but they are stale after it re-runs: re-run this module (and run.py) after any export_web run.
+Provenance: readout.json "bundle_fingerprint" is levels.bundle_fingerprint(sub) at export time. When
+data/perception/results.json exists, every listener's fingerprint and the levels.npz sha256 must match
+the ones recorded there, else nothing is exported (RuntimeError); the levels sidecar is checked too.
 """
 
 import json
@@ -31,12 +38,11 @@ from src import features as F
 from src.deam import load_ratings
 from src.export_web import save
 from src.perception import levels, readout
-from src.perception.levels import L1_NAMES, SUBS, load_bundle
+from src.perception.levels import CONFIG, L1_NAMES, SUBS, bundle_fingerprint, file_sha256, load_bundle
 from src.perception.run import RATINGS, deam_split, merge_ratings, page_features
 
 FREEZE = F.DATA.parent / "docs" / "superpowers" / "specs" / "2026-11-02-perception-freeze.md"
 N_BOOT = 200
-CONFIG = dict(azimuth=0, distance=1, preset="studio", gain_db=0)
 
 
 def request_seed(sub):
@@ -75,8 +81,28 @@ def bootstrap(X_tr, Y_tr, g_tr, mean, std, keep, n_boot, seed, label=""):
     return out
 
 
-def export_listener(sub, lv, ratings, bundle, out_dir, n_boot=N_BOOT):
-    """lv: dict-like with song_id, group, L1, xbar. ratings: DataFrame(song_id, valence, arousal)."""
+def check_against_results(fingerprints, levels_path, results_path=None):
+    """fingerprints: {sub: bundle_fingerprint(sub)} now. If results.json exists, each must equal the
+    one recorded there, and so must the levels file's sha256; raise RuntimeError otherwise."""
+    results_path = levels.OUT / "results.json" if results_path is None else results_path
+    if not results_path.exists():
+        print(f"WARNING: {results_path} missing; readouts are not checked against a results run",
+              flush=True)
+        return
+    meta = json.loads(results_path.read_text(encoding="utf-8"))["meta"]
+    if "bundle_fingerprints" not in meta:
+        raise RuntimeError(f"{results_path} records no bundle fingerprints; re-run src.perception.run first")
+    bad = [s for s, fp in fingerprints.items() if meta["bundle_fingerprints"].get(s) != fp]
+    if bad:
+        raise RuntimeError(f"bundle of sub-{', sub-'.join(bad)} differs from the one {results_path} was "
+                           "computed on; re-run src.perception.run (and levels if sub-001 changed)")
+    if meta.get("levels_sha256") != file_sha256(levels_path):
+        raise RuntimeError(f"{levels_path} differs from the levels file {results_path} was computed on")
+
+
+def export_listener(sub, lv, ratings, bundle, out_dir, n_boot=N_BOOT, fingerprint=None):
+    """lv: dict-like with song_id, group, L1, xbar. ratings: DataFrame(song_id, valence, arousal).
+    fingerprint: levels.bundle_fingerprint(sub), recorded in readout.json when given."""
     sid = np.asarray(lv["song_id"])
     groups = np.asarray(lv["group"])
     merged = merge_ratings(sid, ratings)
@@ -100,6 +126,8 @@ def export_listener(sub, lv, ratings, bundle, out_dir, n_boot=N_BOOT):
         n_train=int(len(tr)), n_test=int(len(te)),
         train_min=X[tr].min(0).tolist(), train_max=X[tr].max(0).tolist(),
         config=CONFIG, n_boot=int(n_boot))
+    if fingerprint is not None:
+        doc["bundle_fingerprint"] = fingerprint
     boot = bootstrap(X[tr], Y[tr], groups[tr], mean, std, keep, n_boot,
                 request_seed(sub), label=sub)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -108,11 +136,13 @@ def export_listener(sub, lv, ratings, bundle, out_dir, n_boot=N_BOOT):
     return doc
 
 
-def _run_one(sub):
+def _run_one(args):
+    sub, fingerprint = args
     z = np.load(levels.OUT / "levels.npz")
     lv = {k: z[k] for k in ("song_id", "group", "L1", "xbar")}
     print(f"sub-{sub} start", flush=True)
-    doc = export_listener(sub, lv, load_ratings(FREEZE), load_bundle(sub), levels.WEB / f"sub-{sub}")
+    doc = export_listener(sub, lv, load_ratings(FREEZE), load_bundle(sub), levels.WEB / f"sub-{sub}",
+                          fingerprint=fingerprint)
     print(f"sub-{sub} done: n_train {doc['n_train']} n_test {doc['n_test']} "
           f"R2 {({k: round(v['r2'], 3) for k, v in doc['heldout'].items()})}", flush=True)
 
@@ -120,8 +150,12 @@ def _run_one(sub):
 def main(argv=None):
     """Listeners run in parallel processes; each listener's seeding is independent of scheduling."""
     from multiprocessing import Pool
+    lv_path = levels.OUT / "levels.npz"
+    levels.check_provenance(lv_path)
+    fps = {s: bundle_fingerprint(s) for s in SUBS}
+    check_against_results(fps, lv_path)
     with Pool(len(SUBS)) as pool:
-        pool.map(_run_one, SUBS)
+        pool.map(_run_one, [(s, fps[s]) for s in SUBS])
 
 
 if __name__ == "__main__":

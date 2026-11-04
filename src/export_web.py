@@ -39,6 +39,12 @@ Writes data/web/sub-XXX/
   check.json         one test clip's features and predictions, for the JS parity test
 and data/web/mesh/ (shared): pial / inflated coordinates, faces, sulcal depth, curvature.
 
+Each run clears data/web/sub-XXX/ first, except the perception readout files (PRESERVE: readout.json,
+readout_boot.f32 and its .gz.b64.txt twin), which src.perception.export writes into the same folder.
+Order: this module -> src.perception.levels -> .run -> .export. After re-running this module the
+preserved readout is stale (it was fit on the previous bundle): re-run src.perception.export, which
+checks the bundle fingerprint against results.json.
+
 Usage:
   python -m src.export_web --sub 001
 """
@@ -58,6 +64,8 @@ from .ablation import BRAAK
 from .validate import paths, region_labels
 
 OUT = F.DATA / "web"
+# written by src.perception.export into the same sub-XXX folder; the cleanup leaves them alone
+PRESERVE = frozenset({"readout.json", "readout_boot.f32", "readout_boot.f32.gz.b64.txt"})
 MESH = "fsaverage6"
 SAMPLE_DEPTHS = np.linspace(0, 1, 5)  # white -> pial
 MAX_MM = 3.0  # a depth sample takes its nearest voxel only if it is this close
@@ -228,6 +236,20 @@ def export_mesh(mesh):
                                              "n_faces": 2 * len(mesh["pial_left"][1])}))
 
 
+def clear_subject_dir(sd):
+    """Delete everything in sd except PRESERVE (the perception readout); returns the preserved names."""
+    kept = []
+    for f in sd.glob("*"):
+        if f.name in PRESERVE:
+            kept.append(f.name)
+        else:
+            f.unlink()
+    if kept:
+        print(f"NOTE: kept {', '.join(sorted(kept))} in {sd}; they are stale once this bundle changes: "
+              "re-run src.perception.export", flush=True)
+    return sorted(kept)
+
+
 def run(sub):
     d, out = paths(sub)
     res, stats_sig = np.load(out / "stage2.npz"), np.load(out / "stats.npz")
@@ -282,8 +304,7 @@ def run(sub):
 
     sd = OUT / f"sub-{sub}"
     sd.mkdir(parents=True, exist_ok=True)
-    for f in sd.glob("*"):
-        f.unlink()
+    clear_subject_dir(sd)
     save(sd, "w_vertex.f16", W_vert.astype("<f2"))
     save(sd, "vertex_index.u32", verts.astype("<u4"))
     save(sd, "vertex_r.f32", vertex_r.astype("<f4"))

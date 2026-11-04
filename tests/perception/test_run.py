@@ -64,6 +64,7 @@ def fixture(tmp_path, monkeypatch):
         return dict(stats=None, W_region=W, region_names=[f"reg{i}" for i in range(r)],
                     acoustic_cols=slice(0, 300), structural_cols=slice(300, 340))
     monkeypatch.setattr(R, "load_bundle", bundle)
+    monkeypatch.setattr(R, "bundle_fingerprint", lambda sub: {"w_region_sha256": f"w{sub}", "bands_sha256": "b"})
     freeze = tmp_path / "freeze.md"
     freeze.write_text("# synthetic freeze\n\nGo-ahead: Luke, 2026-11-03\n", encoding="utf-8")
     return tmp_path, freeze
@@ -120,6 +121,15 @@ def test_run_end_to_end_on_fixture(fixture):
     md = (tmp / "out" / "results.md").read_text(encoding="utf-8")
     assert "## Verdicts" in md and "| H1 | supported |" in md
     assert "R2(a) | R2(b) | alpha(a) | alpha(b)" in md and "DEAM R2 (page)" in md
+    # provenance: freeze path as given plus its sha256, input file hashes, every listener's bundle
+    from src.perception.levels import file_sha256
+    meta = on_disk["meta"]
+    assert meta["freeze"] == str(freeze) and meta["freeze_sha256"] == file_sha256(freeze)
+    assert meta["levels_sha256"] == file_sha256(tmp / "levels.npz")
+    assert meta["pmemo_levels_sha256"] == file_sha256(tmp / "pmemo_levels.npz")
+    assert meta["bundle_fingerprints"] == {s: {"w_region_sha256": f"w{s}", "bands_sha256": "b"} for s in SUBS}
+    assert meta["levels_provenance"] is None and meta["pmemo_levels_provenance"] is None  # no sidecars here
+    assert "git_commit" in meta
 
 
 def _assert_consistent(res):
@@ -188,6 +198,17 @@ def test_export_shares_run_definitions():
     from src.perception import export
     assert export.page_features is R.page_features
     assert export.merge_ratings is R.merge_ratings and export.deam_split is R.deam_split
+    from src.perception import figures, levels
+    assert export.RATINGS is R.RATINGS and figures.RATINGS is R.RATINGS
+    assert export.CONFIG is levels.CONFIG
+    assert figures.alpha_at_edge is R.alpha_at_edge
+
+
+def test_alpha_edge_both_ends():
+    from src.perception.readout import ALPHAS
+    assert R.alpha_at_edge(float(ALPHAS[0])) and R.alpha_at_edge(float(ALPHAS[-1]))
+    assert not R.alpha_at_edge(float(ALPHAS[1])) and not R.alpha_at_edge(None)
+    assert R._is_edge({"alpha": float(ALPHAS[0])}, ALPHAS) and not R._is_edge({"alpha": None}, ALPHAS)
 
 
 def _old_boot_r2(y, pred, n, seed):  # the pre-refactor implementation, verbatim

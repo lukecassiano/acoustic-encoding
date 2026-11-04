@@ -25,13 +25,13 @@ from matplotlib.ticker import MaxNLocator
 
 from src import features as F
 from src.figures import AXIS, BLUE, INK, MUTED, ORANGE, SECONDARY, SURFACE, style, title
+from src.perception.run import RATINGS, alpha_at_edge
 
 DPI = 300
-RATINGS = ("valence", "arousal")
-ALPHA_TOP = 1e5 * 0.99  # CV alpha at the top of the grid: near-constant model
 TOP_MARK = "†"
-FOOTNOTE = TOP_MARK + " ridge at max penalty"
-VERDICT_COLOR = {"supported": BLUE, "not supported": ORANGE, "inconclusive": MUTED}
+FOOTNOTE = TOP_MARK + " ridge alpha at an end of the grid"
+# verdict text never reuses the acoustic / structural BLUE / ORANGE
+VERDICT_COLOR = {"supported": INK, "not supported": "#9b2c3a", "inconclusive": MUTED}
 OUT_DEFAULT = F.ROOT / "figures" / "perception"
 RESULTS_DEFAULT = F.ROOT / "data" / "perception" / "results.json"
 
@@ -44,8 +44,8 @@ def _save(fig, out, name):
 
 
 def _top(rec):
-    a = rec.get("alpha") if rec else None
-    return a is not None and a >= ALPHA_TOP
+    """Ridge alpha at either end of the frozen grid (run.alpha_at_edge, the results.md predicate)."""
+    return bool(rec) and alpha_at_edge(rec.get("alpha"))
 
 
 def _mark_top(ax, x, y):
@@ -131,6 +131,8 @@ def dissociation(res, out):
         d = h2["L0"][rating]
         _verdict_text(ax, f"diff {d['diff']:.3f} [{d['lo']:.3f}, {d['hi']:.3f}]", d["verdict"], y=1.04)
         if k == 1:  # per-listener H2 verdicts (both ratings) beside the right panel
+            ax.annotate("H2 (both ratings)", (1.02, len(labels) - 0.5), xycoords=("axes fraction", "data"),
+                        fontsize=7, color=SECONDARY, va="bottom", fontweight="bold")
             for i, v in enumerate([h2["L0"]["verdict"]] + [h2["L2"]["listeners"][s]["verdict"] for s in subs]):
                 ax.annotate(v, (1.02, len(labels) - 1 - i), xycoords=("axes fraction", "data"),
                             fontsize=7, color=VERDICT_COLOR.get(v, SECONDARY), va="center")

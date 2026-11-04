@@ -145,8 +145,6 @@ def theory_baseline(L0_tr, L1_tr, L0_te, L1_te, y_tr, l0_names=L0_NAMES, l1_name
         s_tr = np.zeros(len(L0_tr))
         s_te = np.zeros(len(L0_te))
         for nm in names:
-            z_te, z_tr = _z(col(L0_tr, L1_tr, nm).astype(float), col(L0_te, L1_te, nm).astype(float)) \
-                if False else (None, None)
             tr = col(L0_tr, L1_tr, nm).astype(float)
             te = col(L0_te, L1_te, nm).astype(float)
             z_te, z_tr = _z(tr, te)

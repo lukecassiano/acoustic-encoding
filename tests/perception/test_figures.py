@@ -62,7 +62,8 @@ def _recs(res):
     """Records the figures may mark with a dagger, per figure."""
     m, subs = res["models"], res["meta"]["listeners"]
     per = lambda k: [m[k][s][r] for s in subs for r in G.RATINGS]
-    top = lambda recs: sum(1 for x in recs if x.get("alpha") is not None and x["alpha"] >= 0.99e5)
+    top = lambda recs: sum(1 for x in recs if x.get("alpha") is not None  # either end of the grid
+                           and (np.isclose(x["alpha"], 1e5) or np.isclose(x["alpha"], 1e-2)))
     both = lambda k: [m[k][r] for r in G.RATINGS]
     return dict(
         hierarchy=top(both("L0") + both("L0+L1") + both("theory") + per("L2")),
@@ -103,6 +104,7 @@ def test_all_five_figures_nonblank(tmp_path, monkeypatch):
         res["models"]["page"][s]["arousal"]["alpha"] = 1e5
         res["models"]["L2_acoustic"][s]["valence"]["alpha"] = 1e5
     res["models"]["L0+L1"]["valence"]["alpha"] = 1e5
+    res["models"]["L0"]["arousal"]["alpha"] = 1e-2  # bottom of the grid is marked too
     d = _run_figs(res, tmp_path, monkeypatch)
     assert d == _recs(res) and d["hierarchy"] > 0 and d["generalisation"] > 0
 
@@ -112,3 +114,9 @@ def test_figures_from_genuine_run_results(fixture, monkeypatch, tmp_path):
     res = _run(tmp, freeze)  # real run.run on the synthetic fixture, never the real data
     d = _run_figs(res, tmp_path, monkeypatch)
     assert d == _recs(res)
+
+
+def test_verdict_colours_distinct_from_pathways():
+    from src.figures import BLUE, ORANGE
+    cols = set(G.VERDICT_COLOR.values())
+    assert len(cols) == 3 and not cols & {BLUE, ORANGE}
