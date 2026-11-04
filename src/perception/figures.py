@@ -20,6 +20,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator
 
 from src import features as F
 from src.figures import AXIS, BLUE, INK, MUTED, ORANGE, SECONDARY, SURFACE, style, title
@@ -51,12 +53,12 @@ def _mark_top(ax, x, y):
                 fontsize=8, color=SECONDARY, va="center")
 
 
-def _footnote(fig, used):
+def _footnote(fig, used, y=-0.01):
     if used:
-        fig.text(0.01, -0.01, FOOTNOTE, fontsize=7.5, color=SECONDARY, ha="left", va="top")
+        fig.text(0.01, y, FOOTNOTE, fontsize=7.5, color=SECONDARY, ha="left", va="top")
 
 
-def _verdict_text(ax, text, verdict, y=1.12):
+def _verdict_text(ax, text, verdict, y=1.0):
     ax.text(0.99, y, text, transform=ax.transAxes, ha="right", va="bottom", fontsize=7.5,
             color=VERDICT_COLOR.get(verdict, SECONDARY))
 
@@ -75,15 +77,20 @@ def hierarchy(res, out):
             if key == "L2":
                 vals = np.array([m["L2"][s][rating]["r2"] for s in m["L2"]], float)
                 mid, lo, hi = vals.mean(), vals.min(), vals.max()
-                top = any(_top(m["L2"][s][rating]) for s in m["L2"])
+                top = False
                 ax.plot([lo, hi], [y, y], color=BLUE, lw=2, solid_capstyle="butt")
-                ax.plot(vals, [y] * len(vals), "|", color=BLUE, ms=7)
+                ax.plot(vals, [y] * len(vals), "|", color=BLUE, ms=9)
+                for s, v in zip(m["L2"], vals):  # dagger at the listener's own tick
+                    if _top(m["L2"][s][rating]):
+                        used = True
+                        _mark_top(ax, v, y + 0.18)
                 col = BLUE
             else:
                 r = m[key][rating]
                 mid, lo, hi, top, col = r["r2"], r["r2_lo"], r["r2_hi"], _top(r), INK
                 ax.plot([lo, hi], [y, y], color=INK, lw=1.4)
-            ax.plot(mid, y, "o", color=col, ms=5)
+            ax.plot(mid, y, "D" if key == "L2" else "o", color=col, mfc=SURFACE if key == "L2" else col,
+                    ms=5, zorder=3)
             if top:
                 used = True
                 _mark_top(ax, max(hi, mid), y)
@@ -121,7 +128,7 @@ def dissociation(res, out):
         ax.set_xlabel("held-out $R^2$")
         title(ax, rating)
         d = h2["L0"][rating]
-        _verdict_text(ax, f"diff {d['diff']:.3f} [{d['lo']:.3f}, {d['hi']:.3f}]", d["verdict"], y=1.0)
+        _verdict_text(ax, f"diff {d['diff']:.3f} [{d['lo']:.3f}, {d['hi']:.3f}]", d["verdict"], y=1.04)
         if k == 1:  # per-listener H2 verdicts (both ratings) beside the right panel
             for i, v in enumerate([h2["L0"]["verdict"]] + [h2["L2"]["listeners"][s]["verdict"] for s in subs]):
                 ax.annotate(v, (1.02, len(labels) - 1 - i), xycoords=("axes fraction", "data"),
@@ -152,11 +159,15 @@ def projection_null(res, out):
             title(ax, s + " " + rating)
             ax.set_xlabel("$R^2$")
             ax.set_yticks([])
-        _verdict_text(axes[i, -1], "H3 " + rating + ": " + h3[rating]["verdict"], h3[rating]["verdict"], y=1.22)
-    axes[0, 0].plot([], [], color=BLUE, lw=2, label="L2")
-    axes[0, 0].plot([], [], color=SECONDARY, lw=1, ls="--", label="null 95th pct")
-    axes[0, 0].legend(frameon=False, fontsize=7, loc="upper left", labelcolor=SECONDARY)
+            ax.xaxis.set_major_locator(MaxNLocator(3))
+            ax.ticklabel_format(axis="x", useOffset=False)
+            ax.tick_params(axis="x", labelsize=7)
+        _verdict_text(axes[i, -1], "H3 " + rating + ": " + h3[rating]["verdict"], h3[rating]["verdict"], y=1.25)
     fig.tight_layout()
+    fig.legend(handles=[Line2D([], [], color=BLUE, lw=2, label="L2"),
+                        Line2D([], [], color=SECONDARY, lw=1, ls="--", label="null 95th pct")],
+               frameon=False, fontsize=7.5, loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=2,
+               labelcolor=SECONDARY)
     _save(fig, out, "projection_null")
 
 
@@ -185,7 +196,7 @@ def psychophysics(out):
             ax.plot(az, data[:, c], "o-", color=col, ms=4, lw=1.3, label=f"{cfs[c]:.0f} Hz")
         ax.set_xlabel("azimuth (deg, + left)")
         ax.set_ylabel(ylab)
-        ax.set_xticks(az[::2])
+        ax.set_xticks(az)
     axes[0].plot(fine, [head_itd_s(float(a)) * 1e6 for a in fine], color=INK, lw=1, ls="--", label="Woodworth")
     title(axes[0], "ITD")
     title(axes[1], "ILD")
@@ -199,7 +210,9 @@ def psychophysics(out):
 def generalisation(res, out):
     h4, pm, subs = res["hypotheses"]["H4"], res["pmemo_models"], res["meta"]["listeners"]
     rows = [("page", s) for s in subs] + [("L2", s) for s in subs] + [(k, None) for k in ("L0", "L0+L1", "theory")]
+    mdl = res["models"]
     fig, axes = plt.subplots(1, 2, figsize=(8.5, 4.2), sharey=True)
+    used = False
     for ax, rating in zip(axes, RATINGS):
         style(ax, grid="x")
         for i, (key, s) in enumerate(rows):
@@ -214,15 +227,22 @@ def generalisation(res, out):
             col = BLUE if primary else MUTED
             ax.plot([rec["lo"], rec["hi"]], [y, y], color=col, lw=1.5 if primary else 1.1)
             ax.plot(rec["r"], y, "o", color=col, ms=5 if primary else 4)
+            # H4 models are the DEAM-train fits: alpha comes from results["models"]
+            fit = None if key == "theory" else (mdl[key][s][rating] if s else mdl[key][rating])
+            if _top(fit):
+                used = True
+                _mark_top(ax, max(rec["hi"], rec["r"]), y)
         ax.axvline(0, color=AXIS, lw=0.8)
         ax.set_yticks(range(len(rows)), [f"{k} {s}" if s else k for k, s in rows][::-1])
         ax.set_xlabel("PMEmo Pearson $r$")
         title(ax, rating)
-        _verdict_text(ax, "H4 " + rating + ": " + h4[rating]["verdict"], h4[rating]["verdict"], y=1.0)
-    axes[0].plot([], [], "o", color=BLUE, label="page readout (primary)")
-    axes[0].plot([], [], "o", color=MUTED, label="descriptive")
-    axes[0].legend(frameon=False, fontsize=7.5, loc="lower right", labelcolor=SECONDARY)
+        _verdict_text(ax, "H4 " + rating + ": " + h4[rating]["verdict"], h4[rating]["verdict"], y=1.04)
     fig.subplots_adjust(wspace=0.1)
+    fig.legend(handles=[Line2D([], [], marker="o", ls="", color=BLUE, label="page readout (primary)"),
+                        Line2D([], [], marker="o", ls="", color=MUTED, label="descriptive")],
+               frameon=False, fontsize=7.5, loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=2,
+               labelcolor=SECONDARY)
+    _footnote(fig, used, y=-0.08)
     _save(fig, out, "generalisation")
 
 

@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from src.perception import figures as G
+from tests.perception.test_run import _run, fixture  # noqa: F401  (pytest fixture)
 
 SUBS = ["001", "002", "003"]
 NAMES = ("hierarchy", "dissociation", "projection_null", "psychophysics", "generalisation")
@@ -57,24 +58,57 @@ def fake_results(seed=0):
     return json.loads(json.dumps(res))
 
 
-def test_all_five_figures_nonblank(tmp_path, monkeypatch):
-    rp = tmp_path / "results.json"
-    rp.write_text(json.dumps(fake_results()), encoding="utf-8")
-    out = tmp_path / "figs"
-    seen = []
-    orig = G._save
+def _recs(res):
+    """Records the figures may mark with a dagger, per figure."""
+    m, subs = res["models"], res["meta"]["listeners"]
+    per = lambda k: [m[k][s][r] for s in subs for r in G.RATINGS]
+    top = lambda recs: sum(1 for x in recs if x.get("alpha") is not None and x["alpha"] >= 0.99e5)
+    both = lambda k: [m[k][r] for r in G.RATINGS]
+    return dict(
+        hierarchy=top(both("L0") + both("L0+L1") + both("theory") + per("L2")),
+        dissociation=top(both("L0_acoustic") + both("L0_structural") + per("L2_acoustic") + per("L2_structural")),
+        generalisation=top(both("L0") + both("L0+L1") + per("L2") + per("page")),
+        projection_null=0, psychophysics=0)
 
-    def spy(fig, o, name):  # every axis must carry data artists
+
+def _run_figs(res, tmp_path, monkeypatch):
+    rp = tmp_path / "results_in.json"
+    rp.write_text(json.dumps(res), encoding="utf-8")
+    out = tmp_path / "figs"
+    daggers, orig = {}, G._save
+
+    def spy(fig, o, name):  # every axis must carry data artists; count dagger annotations
         for ax in fig.axes:
             if ax.get_visible() and (ax.get_xlabel() or ax.get_title(loc="left")):
                 assert ax.lines or ax.patches or ax.collections, (name, ax.get_title(loc="left"))
-        seen.append(name)
+        daggers[name] = sum(t.get_text() == G.TOP_MARK for ax in fig.axes for t in ax.texts)
+        has_note = any(t.get_text() == G.FOOTNOTE for t in fig.texts)
+        assert has_note == (daggers[name] > 0), name
         orig(fig, o, name)
 
     monkeypatch.setattr(G, "_save", spy)
     G.main(["--results", str(rp), "--out", str(out)])
-    assert sorted(seen) == sorted(NAMES)
+    assert sorted(daggers) == sorted(NAMES)
     for n in NAMES:
         f = out / f"{n}.png"
         assert f.exists() and f.stat().st_size > 5000
     plt.close("all")
+    return daggers
+
+
+def test_all_five_figures_nonblank(tmp_path, monkeypatch):
+    res = fake_results()
+    for s in SUBS[:2]:  # exercise the max-penalty marks in every figure
+        res["models"]["L2"][s]["valence"]["alpha"] = 1e5
+        res["models"]["page"][s]["arousal"]["alpha"] = 1e5
+        res["models"]["L2_acoustic"][s]["valence"]["alpha"] = 1e5
+    res["models"]["L0+L1"]["valence"]["alpha"] = 1e5
+    d = _run_figs(res, tmp_path, monkeypatch)
+    assert d == _recs(res) and d["hierarchy"] > 0 and d["generalisation"] > 0
+
+
+def test_figures_from_genuine_run_results(fixture, monkeypatch, tmp_path):
+    tmp, freeze = fixture
+    res = _run(tmp, freeze)  # real run.run on the synthetic fixture, never the real data
+    d = _run_figs(res, tmp_path, monkeypatch)
+    assert d == _recs(res)
