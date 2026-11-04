@@ -13,13 +13,13 @@ Branch: `perception-1`. No ratings have been read. `src.deam.load_ratings` refus
 ## Counts (filled in after extraction, before go-ahead; audio-only, no ratings involved)
 | Item | Value |
 |---|---|
-| Excerpts found | TBD |
-| Excerpts included | TBD |
-| Skipped: unreadable | TBD |
-| Skipped: shorter than 9 s | TBD |
-| Skipped: silent | TBD |
-| Skipped: no rating (dropped at merge, counted) | TBD |
-| Groups (artists) | TBD |
+| Excerpts found | 1802 (mp3s in MEMD_audio; 59 with song_id >= 2000 excluded by rule) |
+| Excerpts included | 1743 |
+| Skipped: unreadable | 0 |
+| Skipped: shorter than 9 s | 0 |
+| Skipped: silent | 0 |
+| Skipped: no rating (dropped at merge, counted) | 0 |
+| Groups (artists) | 882 |
 
 ## Decisions
 1. L0 and L2 from the raw excerpt (`F.extract(F.prepare(y22))`); L1 from the ear-rendered signal: `Source(y44, 0.0, 1.0, "studio", 0.0)` = 0 deg, 1 m, studio preset, 0 dB.
